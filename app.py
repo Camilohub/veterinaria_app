@@ -224,8 +224,19 @@ def admin_panel():
         1 for i in inventario if i["dias_vence"] is not None and i["dias_vence"] <= 30
     )
 
+    cursor.execute(
+        """
+        SELECT m.`idmascota` AS idmascota, m.`nombre_mascota` AS nombre, m.`especie` AS especie, m.`raza` AS raza, COALESCE(p.`nombre_dueño`, 'Sin propietario') AS propietario
+        FROM mascota m
+        LEFT JOIN `dueño` p ON m.`id_dueño` = p.`id_dueño`
+        ORDER BY m.`idmascota` DESC
+        """
+    )
+    mascotas = cursor.fetchall()
+
     return render_template(
         "admin.html",
+        mascotas=mascotas,
         usuarios=usuarios,
         roles=roles,
         veterinarios=veterinarios,
@@ -678,6 +689,53 @@ def admin_toggle_procedimiento(idproc):
     except mysql.connector.Error as err:
         conn.rollback()
         flash(f"Error: {err.msg}", "danger")
+    finally:
+        cursor.close()
+        conn.close()
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/mascota/eliminar/<int:idmascota>", methods=["POST"])
+def admin_eliminar_mascota(idmascota):
+    rol_actual = session.get("idRol")
+    if rol_actual not in (ROL_ADMIN, ROL_SUPERADMIN):
+        return redirect(url_for("panel"))
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT `nombre_mascota` AS nombre FROM mascota WHERE `idmascota` = %s", (idmascota,))
+        masc = cursor.fetchone()
+        if not masc:
+            flash("La mascota no existe.", "warning")
+            return redirect(url_for("admin_panel"))
+
+        if rol_actual == ROL_SUPERADMIN:
+                cursor.execute("DELETE FROM `vacunacion` WHERE `idmascota` = %s", (idmascota,))
+                cursor.execute("DELETE FROM `vacuna` WHERE `idmascota` = %s", (idmascota,))
+                cursor.execute("DELETE FROM `tratamiento_medicamento` WHERE `idtratamiento` IN (SELECT `idtratamiento` FROM `tratamiento` WHERE `idcita` IN (SELECT `idcita` FROM `cita` WHERE `idmascota` = %s))", (idmascota,))
+                cursor.execute("DELETE FROM `tratamiento` WHERE `idcita` IN (SELECT `idcita` FROM `cita` WHERE `idmascota` = %s)", (idmascota,))
+                cursor.execute("DELETE FROM `signos_vitales` WHERE `idcita` IN (SELECT `idcita` FROM `cita` WHERE `idmascota` = %s)", (idmascota,))
+                cursor.execute("DELETE FROM `pago` WHERE `idcita` IN (SELECT `idcita` FROM `cita` WHERE `idmascota` = %s)", (idmascota,))
+                cursor.execute("DELETE FROM `cita_procedimiento` WHERE `idcita` IN (SELECT `idcita` FROM `cita` WHERE `idmascota` = %s)", (idmascota,))
+                cursor.execute("DELETE FROM `cita` WHERE `idmascota` = %s", (idmascota,))
+                cursor.execute("DELETE FROM `mascota` WHERE `idmascota` = %s", (idmascota,))
+        else:
+            cursor.execute("DELETE FROM mascota WHERE `idmascota` = %s", (idmascota,))
+
+        registrar_auditoria(
+            cursor,
+            session["idusuario"],
+            "ELIMINAR_MASCOTA",
+            f"Eliminó mascota '{masc['nombre']}' (ID #{idmascota})",
+        )
+        conn.commit()
+        flash("Mascota eliminada correctamente.", "success")
+    except mysql.connector.Error as err:
+        conn.rollback()
+        if err.errno == 1451:
+            flash("No se puede eliminar porque tiene citas o vacunas registradas; solo el Super Admin puede forzar su borrado.", "warning")
+        else:
+            flash(f"Error: {err.msg}", "danger")
     finally:
         cursor.close()
         conn.close()
