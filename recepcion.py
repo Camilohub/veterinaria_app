@@ -89,6 +89,11 @@ def panel():
         c["total_pagado"] = tp
         c["saldo_pendiente"] = sp
         c["esta_pagada"] = saldada
+        if saldada and c["idestado_cita"] not in (8, 9, 10):
+            cursor.execute("UPDATE cita SET idestado_cita = 8 WHERE idcita = %s", (c["idcita"],))
+            conn.commit()
+            c["idestado_cita"] = 8
+            c["nombre_estado"] = "Completada"
         msg = (
             f"Hola {c['nombre_dueño']}, te recordamos la cita de {c['nombre_mascota']} "
             f"el {c['fecha_hora']} en {c['nombre_sede']} con {c['nombre_veterinario']}."
