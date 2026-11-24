@@ -133,7 +133,7 @@ def panel():
     params_rec = (sede_id,) if sede_id else ()
     cursor.execute(
         f"""
-        SELECT tm.*, m.nombre_Medicamento, ma.nombre_mascota, s.nombre_sede,
+        SELECT tm.*, tm.cantidad AS cantidad_prescrita, m.nombre_Medicamento, ma.nombre_mascota, s.nombre_sede,
                COALESCE(inv.stock, 0) AS stock_sede, inv.fecha_vencimiento,
                DATEDIFF(inv.fecha_vencimiento, CURDATE()) AS dias_vence,
                COALESCE((

@@ -114,8 +114,12 @@
                 {% for m in medicamentos %}<option value="{{ m.idMedicamento }}">{{ m.nombre_Medicamento }} (${{ "{:,.0f}".format(m.precio) }})</option>{% endfor %}
               </select>
               <div class="row g-1">
-                <div class="col-4"><input type="number" name="cantidad_prescrita" min="1" value="1" class="form-control form-control-sm" required></div>
-                <div class="col-8"><input type="text" name="dosis" placeholder="Ej: 1 tab c/12h x 5d" class="form-control form-control-sm" required></div>
+                <div class="col-4"><input type="number" name="cantidad_prescrita" min="1" value="1" title="Cantidad" placeholder="Cant." class="form-control form-control-sm" required></div>
+                <div class="col-8"><input type="text" name="dosis" placeholder="Dosis (Ej: 1 tableta)" class="form-control form-control-sm" required></div>
+              </div>
+              <div class="row g-1">
+                <div class="col-7"><input type="text" name="frecuencia" placeholder="Frecuencia (Ej: Cada 12h)" class="form-control form-control-sm" required></div>
+                <div class="col-5"><input type="number" name="duracion_dias" min="1" value="5" title="Duración en días" placeholder="Días" class="form-control form-control-sm" required></div>
               </div>
               <button class="btn btn-vet btn-sm">Agregar a Receta</button>
             </form>
@@ -136,7 +140,6 @@
                 <option value="">Procedimiento...</option>
                 {% for pr in procedimientos %}<option value="{{ pr.idProcedimiento }}">{{ pr.nombre_Procedimiento }} (${{ "{:,.0f}".format(pr.costo) }})</option>{% endfor %}
               </select>
-              <input type="text" name="observaciones" placeholder="Observaciones (opcional)" class="form-control form-control-sm">
               <button class="btn btn-vet btn-sm">Asociar Procedimiento</button>
             </form>
           </div>

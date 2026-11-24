@@ -153,7 +153,7 @@ def panel():
 
     cursor.execute(
         """
-        SELECT tm.*, m.nombre_Medicamento, ma.nombre_mascota, t.idcita
+        SELECT tm.*, tm.cantidad AS cantidad_prescrita, m.nombre_Medicamento, ma.nombre_mascota, t.idcita
         FROM tratamiento_medicamento tm
         JOIN medicamento m ON tm.idMedicamento = m.idMedicamento
         JOIN tratamiento t ON tm.idtratamiento = t.idtratamiento
@@ -252,7 +252,7 @@ def panel():
 
         cursor.execute(
             """
-            SELECT tm.*, m.nombre_Medicamento, c.fecha_hora
+            SELECT tm.*, tm.cantidad AS cantidad_prescrita, m.nombre_Medicamento, c.fecha_hora
             FROM tratamiento_medicamento tm
             JOIN medicamento m ON tm.idMedicamento = m.idMedicamento
             JOIN tratamiento t ON tm.idtratamiento = t.idtratamiento
@@ -399,6 +399,8 @@ def crear_receta():
     idmed = int(request.form["idMedicamento"])
     cant = int(request.form["cantidad_prescrita"])
     dosis = (request.form.get("dosis") or "").strip()
+    frecuencia = (request.form.get("frecuencia") or "Según indicación").strip()
+    duracion_dias = max(1, int(request.form.get("duracion_dias") or 1))
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -424,10 +426,10 @@ def crear_receta():
 
         cursor.execute(
             """
-            INSERT INTO tratamiento_medicamento (idtratamiento, idMedicamento, cantidad_prescrita, dosis)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO tratamiento_medicamento (idtratamiento, idMedicamento, cantidad, dosis, frecuencia, duracion_dias)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            (idtrat, idmed, cant, dosis),
+            (idtrat, idmed, cant, dosis, frecuencia, duracion_dias),
         )
         conn.commit()
 
@@ -501,10 +503,10 @@ def agregar_procedimiento():
             return redirect(url_for("veterinario.panel"))
         cursor.execute(
             """
-            INSERT INTO cita_procedimiento (idcita, idProcedimiento, precio_cobrado, observaciones)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO cita_procedimiento (idcita, idProcedimiento, precio_cobrado)
+            VALUES (%s, %s, %s)
             """,
-            (idcita, idproc, proc["costo"], obs),
+            (idcita, idproc, proc["costo"]),
         )
         conn.commit()
         flash("Procedimiento agregado a la cita.", "success")
