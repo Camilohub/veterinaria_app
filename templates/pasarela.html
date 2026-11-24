@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Facturación Cita #{{ cita['idcita'] }}{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-purple d-flex justify-content-between align-items-center py-3">
+                <span><i class="bi bi-credit-card-2-front me-2"></i><strong>Terminal de Facturación y Cobro</strong></span>
+                <span class="badge bg-light text-dark">Cita #{{ cita['idcita'] }}</span>
+            </div>
+            <div class="card-body p-4 bg-white">
+                <div class="row mb-3 p-3 rounded-3 bg-purple-soft">
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>Propietario:</strong> {{ cita['nombre_dueño'] }} ({{ cita['documento_dueño'] }})</p>
+                        <p class="mb-0"><strong>Paciente:</strong> {{ cita['nombre_mascota'] }}</p>
+                    </div>
+                    <div class="col-md-6 text-md-end">
+                        <p class="mb-1"><strong>Sede:</strong> {{ cita['nombre_sede'] }}</p>
+                        <p class="mb-0"><strong>Estado:</strong> <span class="badge bg-dark">{{ cita['nombre_estado'] }}</span></p>
+                    </div>
+                </div>
+
+                <table class="table table-sm table-bordered mb-4">
+                    <thead class="table-light"><tr><th>Concepto</th><th>Detalle</th><th class="text-end">Subtotal</th></tr></thead>
+                    <tbody>
+                        {% for p in procedimientos %}<tr><td>Procedimiento</td><td>{{ p['nombre_Procedimiento'] }}</td><td class="text-end">${{ "%.2f"|format(p['precio_cobrado']) }}</td></tr>{% endfor %}
+                        {% for m in medicamentos %}<tr><td>Medicamento</td><td>{{ m['nombre_Medicamento'] }} (x{{ m['cantidad_entregada'] }})</td><td class="text-end">${{ "%.2f"|format(m['subtotal']) }}</td></tr>{% endfor %}
+                        {% if not procedimientos and not medicamentos %}<tr><td colspan="3" class="text-center text-muted">Sin cargos previos asociados (ingresa el valor de la atención).</td></tr>{% endif %}
+                    </tbody>
+                    <tfoot>
+                        <tr><th colspan="2" class="text-end">Total Facturado:</th><th class="text-end">${{ "%.2f"|format(total_general) }}</th></tr>
+                        <tr><th colspan="2" class="text-end text-success">Abonado / Pagado:</th><th class="text-end text-success">${{ "%.2f"|format(pagado) }}</th></tr>
+                        <tr class="table-warning"><th colspan="2" class="text-end">Saldo Pendiente:</th><th class="text-end">${{ "%.2f"|format(saldo) }}</th></tr>
+                    </tfoot>
+                </table>
+
+                <form action="{{ url_for('pagos.procesar', idcita=cita['idcita']) }}" method="POST" class="border rounded-3 p-3 bg-light">
+                    <input type="hidden" name="ultimos4" id="ultimos4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Valor a Cobrar ($)</label>
+                            <input type="number" step="0.01" min="1" name="monto_total" class="form-control" value="{{ '%.2f'|format(saldo if saldo > 0 else 45000) }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Medio de Pago</label>
+                            <select name="metodo_pago" id="metodo_pago" class="form-select" required>
+                                <option value="Tarjeta Crédito/Débito">Tarjeta Crédito / Débito (Datáfono)</option>
+                                <option value="PSE">Transferencia Bancaria / PSE</option>
+                                <option value="Nequi / Daviplata">Billetera Digital (Nequi / Daviplata)</option>
+                                <option value="Efectivo Caja">Efectivo en Caja</option>
+                            </select>
+                        </div>
+
+                        <div id="bloque-tarjeta" class="col-12">
+                            <div class="row g-2 p-3 border rounded-3 bg-white">
+                                <div class="col-12"><small class="text-muted"><i class="bi bi-shield-check me-1"></i>Verificación de tarjeta (los datos completos no se almacenan en el sistema)</small></div>
+                                <div class="col-md-6"><input type="text" id="card_titular" class="form-control form-control-sm card-req" placeholder="Titular de la tarjeta *" required></div>
+                                <div class="col-md-6"><input type="text" id="card_num" maxlength="19" class="form-control form-control-sm card-req" placeholder="Número de tarjeta (16 dígitos) *" required></div>
+                                <div class="col-md-6"><input type="text" maxlength="5" class="form-control form-control-sm card-req" placeholder="MM/AA *" required></div>
+                                <div class="col-md-6"><input type="password" maxlength="4" class="form-control form-control-sm card-req" placeholder="Código CVV *" required></div>
+                            </div>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Estado de la Operación</label>
+                            <select name="resultado" class="form-select" required>
+                                <option value="Aprobado">Aprobado - Pago Confirmado</option>
+                                <option value="Rechazado">Rechazado - Operación Denegada</option>
+                            </select>
+                        </div>
+                        <div class="col-12 d-flex justify-content-between mt-3">
+                            <a href="{{ url_for('recepcion.panel') }}" class="btn btn-outline-secondary rounded-pill px-4">Volver</a>
+                            <button type="submit" class="btn btn-purple rounded-pill px-4"><i class="bi bi-check2-circle me-1"></i>Registrar Pago</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+const selMetodo = document.getElementById("metodo_pago");
+const bloqueTarjeta = document.getElementById("bloque-tarjeta");
+const inputsCard = document.querySelectorAll(".card-req");
+const cardNum = document.getElementById("card_num");
+const ultimos4 = document.getElementById("ultimos4");
+
+selMetodo.addEventListener("change", function() {
+    const esTarjeta = this.value === "Tarjeta Crédito/Débito";
+    bloqueTarjeta.style.display = esTarjeta ? "block" : "none";
+    inputsCard.forEach(inp => inp.required = esTarjeta);
+});
+cardNum.addEventListener("input", function() {
+    const limpio = this.value.replace(/\D/g, "");
+    ultimos4.value = limpio.slice(-4);
+});
+</script>
+{% endblock %}

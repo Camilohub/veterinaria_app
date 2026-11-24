@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+{% block title %}Administración - Veterinaria App{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Panel de Administración</h4>
+  <div class="d-flex gap-2">
+    <span class="badge bg-danger align-self-center">Stock bajo: {{ stock_bajo }}</span>
+    <span class="badge bg-warning text-dark align-self-center">Próx. vencer: {{ proximos_vencer }}</span>
+  </div>
+</div>
+
+<ul class="nav nav-tabs mb-3" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-personal" type="button">Personal y Usuarios</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-inventario" type="button">Inventario y Catálogos</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-sedes" type="button">Sedes y Auditoría</button></li>
+</ul>
+
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="tab-personal">
+    <div class="row g-3 mb-3">
+      <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+          <div class="card-header card-header-vet">Registrar Veterinario</div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('admin_crear_veterinario') }}" class="row g-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="col-md-6"><input type="text" name="nombre_veterinario" placeholder="Nombre completo" class="form-control form-control-sm" required></div>
+              <div class="col-md-6"><input type="text" name="especialidad" placeholder="Especialidad" class="form-control form-control-sm" required></div>
+              <div class="col-md-12">
+                <select name="idSede" class="form-select form-select-sm" required>
+                  <option value="">Selecciona sede...</option>
+                  {% for s in sedes %}<option value="{{ s.idSede }}">{{ s.nombre_sede }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="col-12 form-check ms-2">
+                <input class="form-check-input" type="checkbox" name="crear_cuenta_usuario" value="1" id="chkCuentaVet" checked>
+                <label class="form-check-label small" for="chkCuentaVet">Crear también su usuario de inicio de sesión</label>
+              </div>
+              <div class="col-md-6"><input type="text" name="nombre_usuario" placeholder="Usuario acceso (opcional)" class="form-control form-control-sm"></div>
+              <div class="col-md-6"><input type="password" name="contraseña" placeholder="Contraseña (mín. 4)" class="form-control form-control-sm"></div>
+              <div class="col-12"><button type="submit" class="btn btn-vet btn-sm w-100">Guardar Veterinario</button></div>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+          <div class="card-header card-header-vet">Crear Cuenta de Usuario</div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('admin_crear_usuario') }}" class="row g-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="col-md-6"><input type="text" name="nombre_usuario" placeholder="Nombre de usuario" class="form-control form-control-sm" required></div>
+              <div class="col-md-6"><input type="password" name="contraseña" placeholder="Contraseña" class="form-control form-control-sm" required></div>
+              <div class="col-md-6">
+                <select name="idRol" class="form-select form-select-sm" required>
+                  {% for r in roles %}<option value="{{ r.idRol }}">{{ r.nombre_rol }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="col-md-6">
+                <select name="idveterinario" class="form-select form-select-sm">
+                  <option value="">Perfil vet (si aplica)</option>
+                  {% for v in veterinarios if v.activo != 0 %}<option value="{{ v.idveterinario }}">{{ v.nombre_veterinario }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="col-12"><button type="submit" class="btn btn-vet btn-sm w-100">Crear Usuario</button></div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card shadow-sm mb-3">
+      <div class="card-header">Equipo Veterinario</div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>ID</th><th>Nombre</th><th>Especialidad</th><th>Sede</th><th>Estado</th><th>Acción</th></tr></thead>
+          <tbody>
+            {% for v in veterinarios %}
+            <tr>
+              <td>{{ v.idveterinario }}</td><td>{{ v.nombre_veterinario }}</td><td>{{ v.especialidad }}</td><td>{{ v.nombre_sede }}</td>
+              <td><span class="badge bg-{{ 'success' if v.activo != 0 else 'secondary' }}">{{ 'Activo' if v.activo != 0 else 'Inactivo' }}</span></td>
+              <td class="d-flex gap-1">
+                <form method="POST" action="{{ url_for('admin_toggle_veterinario', idveterinario=v.idveterinario) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-outline-secondary btn-sm">Activar / Desactivar</button>
+                </form>
+                <form method="POST" action="{{ url_for('admin_eliminar_veterinario', idveterinario=v.idveterinario) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-outline-danger btn-sm">Eliminar</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-header">Usuarios del Sistema</div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>ID</th><th>Usuario</th><th>Rol</th><th>Veterinario Vinculado</th><th>Seguridad / Eliminar</th></tr></thead>
+          <tbody>
+            {% for u in usuarios %}
+            <tr>
+              <td>{{ u.idusuario }}</td><td>{{ u.nombre_usuario }}</td><td>{{ u.nombre_rol }}</td>
+              <td>
+                {% if u.idRol == 3 %}
+                <form method="POST" action="{{ url_for('admin_vincular_veterinario', idusuario=u.idusuario) }}" class="d-flex gap-1">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <select name="idveterinario" class="form-select form-select-sm">
+                    <option value="">Sin vincular</option>
+                    {% for v in veterinarios if v.activo != 0 %}<option value="{{ v.idveterinario }}" {{ 'selected' if v.idveterinario==u.idveterinario }}>{{ v.nombre_veterinario }}</option>{% endfor %}
+                  </select>
+                  <button class="btn btn-outline-primary btn-sm">OK</button>
+                </form>
+                {% else %}-{% endif %}
+              </td>
+              <td class="d-flex gap-1 flex-wrap">
+                {% if session.get('idRol') == 4 %}
+                <form method="POST" action="{{ url_for('admin_cambiar_clave', idusuario=u.idusuario) }}" class="d-flex gap-1">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="password" name="nueva_contraseña" placeholder="Nueva clave" class="form-control form-control-sm" style="width:110px" required>
+                  <input type="password" name="clave_superadmin" placeholder="Clave SA" class="form-control form-control-sm" style="width:95px" required>
+                  <button class="btn btn-warning btn-sm">Clave</button>
+                </form>
+                {% endif %}
+                <form method="POST" action="{{ url_for('admin_eliminar_usuario', idusuario=u.idusuario) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-outline-danger btn-sm">Eliminar</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="tab-pane fade" id="tab-inventario">
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header card-header-vet">Abastecer Stock Sede</div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('admin_stock') }}" class="vstack gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="idSede" class="form-select form-select-sm" required>
+                {% for s in sedes %}<option value="{{ s.idSede }}">{{ s.nombre_sede }}</option>{% endfor %}
+              </select>
+              <select name="idMedicamento" class="form-select form-select-sm" required>
+                {% for m in medicamentos %}<option value="{{ m.idMedicamento }}">{{ m.nombre_Medicamento }}</option>{% endfor %}
+              </select>
+              <input type="number" name="cantidad" min="1" placeholder="Cantidad" class="form-control form-control-sm" required>
+              <input type="date" name="fecha_vencimiento" class="form-control form-control-sm">
+              <button class="btn btn-vet btn-sm">Agregar Stock</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header card-header-vet">Nuevo Medicamento</div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('admin_medicamento') }}" class="vstack gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="nombre" placeholder="Nombre medicamento" class="form-control form-control-sm" required>
+              <input type="number" step="0.01" name="precio" placeholder="Precio unitario" class="form-control form-control-sm" required>
+              <button class="btn btn-vet btn-sm">Guardar Medicamento</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header card-header-vet">Nuevo Procedimiento</div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('admin_procedimiento') }}" class="vstack gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="nombre" placeholder="Nombre procedimiento" class="form-control form-control-sm" required>
+              <input type="text" name="descripcion" placeholder="Descripción" class="form-control form-control-sm">
+              <input type="number" step="0.01" name="costo" placeholder="Costo" class="form-control form-control-sm" required>
+              <button class="btn btn-vet btn-sm">Guardar Procedimiento</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-header">Inventario por Sede</div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Sede</th><th>Medicamento</th><th>Stock</th><th>Vencimiento</th><th>Días</th></tr></thead>
+          <tbody>
+            {% for i in inventario %}
+            <tr class="{{ 'table-danger' if (i.stock or 0)<5 else ('table-warning' if i.dias_vence is not none and i.dias_vence<=30 else '') }}">
+              <td>{{ i.nombre_sede }}</td><td>{{ i.nombre_Medicamento }}</td><td>{{ i.stock }}</td>
+              <td>{{ i.fecha_vencimiento or '-' }}</td><td>{{ i.dias_vence if i.dias_vence is not none else '-' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="card shadow-sm">
+          <div class="card-header">Catálogo Medicamentos</div>
+          <table class="table table-sm mb-0">
+            <tbody>
+              {% for m in medicamentos %}
+              <tr>
+                <td>{{ m.nombre_Medicamento }}</td>
+                <td>
+                  <form method="POST" action="{{ url_for('admin_precio_medicamento', idmed=m.idMedicamento) }}" class="d-flex gap-1">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="number" step="0.01" name="precio" value="{{ m.precio }}" class="form-control form-control-sm" style="width:95px">
+                    <button class="btn btn-outline-primary btn-sm">$</button>
+                  </form>
+                </td>
+                <td class="d-flex gap-1">
+                  <form method="POST" action="{{ url_for('admin_toggle_medicamento', idmed=m.idMedicamento) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-outline-secondary btn-sm">{{ 'Activo' if m.activo != 0 else 'Inactivo' }}</button>
+                  </form>
+                  {% if session.get('idRol') == 4 %}
+                  <form method="POST" action="{{ url_for('admin_eliminar_medicamento', idmed=m.idMedicamento) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-outline-danger btn-sm">Eliminar</button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card shadow-sm">
+          <div class="card-header">Catálogo Procedimientos</div>
+          <table class="table table-sm mb-0">
+            <tbody>
+              {% for pr in procedimientos %}
+              <tr>
+                <td>{{ pr.nombre_Procedimiento }}</td>
+                <td>
+                  <form method="POST" action="{{ url_for('admin_precio_procedimiento', idproc=pr.idProcedimiento) }}" class="d-flex gap-1">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="number" step="0.01" name="costo" value="{{ pr.costo }}" class="form-control form-control-sm" style="width:95px">
+                    <button class="btn btn-outline-primary btn-sm">$</button>
+                  </form>
+                </td>
+                <td>
+                  <form method="POST" action="{{ url_for('admin_toggle_procedimiento', idproc=pr.idProcedimiento) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-outline-secondary btn-sm">{{ 'Activo' if pr.activo != 0 else 'Inactivo' }}</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="tab-sedes">
+    <div class="row g-3 mb-3">
+      <div class="col-md-5">
+        <div class="card shadow-sm">
+          <div class="card-header card-header-vet">Nueva Sede</div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('admin_sede') }}" class="vstack gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="nombre_sede" placeholder="Nombre sede" class="form-control form-control-sm" required>
+              <input type="text" name="direccion_sede" placeholder="Dirección" class="form-control form-control-sm" required>
+              <input type="text" name="telefono_sede" placeholder="Teléfono" class="form-control form-control-sm">
+              <button class="btn btn-vet btn-sm">Crear Sede</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-7">
+        <div class="card shadow-sm">
+          <div class="card-header">Sedes Registradas</div>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>ID</th><th>Nombre</th><th>Dirección</th><th>Teléfono</th></tr></thead>
+            <tbody>
+              {% for s in sedes %}
+              <tr><td>{{ s.idSede }}</td><td>{{ s.nombre_sede }}</td><td>{{ s.direccion_sede }}</td><td>{{ s.telefono_sede or '-' }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="card shadow-sm">
+      <div class="card-header">Bitácora de Auditoría (Últimos 80)</div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr></thead>
+          <tbody>
+            {% for a in auditorias %}
+            <tr><td>{{ a.fecha_hora }}</td><td>{{ a.nombre_usuario }}</td><td><span class="badge bg-dark">{{ a.accion }}</span></td><td>{{ a.detalle }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

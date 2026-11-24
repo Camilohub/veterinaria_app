@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+{% block title %}Recepción y Caja - Veterinaria App{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <h4 class="mb-0">Panel de Recepción, Farmacia y Caja</h4>
+    <small class="text-muted">Hoy: {{ hoy }}</small>
+  </div>
+  <div class="d-flex flex-wrap align-items-center gap-2">
+    <span class="badge bg-warning text-dark">Pendientes cobro: {{ pendientes_cobro }}</span>
+    <span class="badge bg-success">Ingresos ({{ fecha_detalle }}): ${{ "{:,.0f}".format(ingresos_dia) }}</span>
+    <form method="GET" action="{{ url_for('recepcion.panel') }}" class="d-flex gap-1">
+      <input type="text" name="buscar" value="{{ buscar }}" placeholder="Buscar paciente, dueño o CC..." class="form-control form-control-sm">
+      <button class="btn btn-vet btn-sm">Buscar</button>
+    </form>
+  </div>
+</div>
+
+<ul class="nav nav-tabs mb-3" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-agenda" type="button">Agenda y Citas ({{ citas|length }})</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-clientes" type="button">Propietarios y Mascotas</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-farmacia" type="button">Farmacia ({{ recetas|length }})</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-caja" type="button">Cierre de Caja</button></li>
+</ul>
+
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="tab-agenda">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header card-header-vet">Agendar Nueva Cita</div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('recepcion.crear_cita') }}" class="row g-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="col-md-3">
+            <select name="idmascota" class="form-select form-select-sm" required>
+              <option value="">Paciente...</option>
+              {% for m in mascotas %}<option value="{{ m.idmascota }}">{{ m.nombre_mascota }} ({{ m.nombre_dueño }})</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <select name="idveterinario" class="form-select form-select-sm" required>
+              <option value="">Veterinario...</option>
+              {% for v in veterinarios %}<option value="{{ v.idveterinario }}">{{ v.nombre_veterinario }} ({{ v.nombre_sede }})</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-2">
+            <select name="idSede" class="form-select form-select-sm" required>
+              {% for s in sedes %}<option value="{{ s.idSede }}">{{ s.nombre_sede }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-2"><input type="datetime-local" name="fecha_hora" class="form-control form-control-sm" required></div>
+          <div class="col-md-2 d-flex gap-1">
+            <input type="text" name="motivo" placeholder="Motivo" class="form-control form-control-sm">
+            <button class="btn btn-vet btn-sm">Agendar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span>Citas Programadas</span>
+        <form method="GET" action="{{ url_for('recepcion.panel') }}" class="d-flex gap-1">
+          <input type="date" name="fecha" value="{{ '' if fecha_filtro=='todas' else fecha_filtro }}" class="form-control form-control-sm">
+          <select name="sede_id" class="form-select form-select-sm">
+            <option value="">Todas las sedes</option>
+            {% for s in sedes %}<option value="{{ s.idSede }}" {{ 'selected' if sede_id==s.idSede }}>{{ s.nombre_sede }}</option>{% endfor %}
+          </select>
+          <button class="btn btn-outline-primary btn-sm">Filtrar</button>
+          <a href="{{ url_for('recepcion.panel', fecha='') }}" class="btn btn-outline-secondary btn-sm">Todas</a>
+        </form>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>#</th><th>Fecha/Hora</th><th>Paciente / Dueño</th><th>Vet / Sede</th><th>Estado</th><th>Reprogramar</th><th>Caja / WA</th></tr></thead>
+          <tbody>
+            {% for c in citas %}
+            <tr>
+              <td>{{ c.idcita }}</td>
+              <td>{{ c.fecha_hora }}</td>
+              <td><strong>{{ c.nombre_mascota }}</strong><div class="small text-muted">{{ c.nombre_dueño }} ({{ c.documento_dueño }})</div></td>
+              <td>{{ c.nombre_veterinario }}<div class="small text-muted">{{ c.nombre_sede }}</div></td>
+              <td>
+                {% if c.esta_pagada %}
+                  <span class="badge bg-success">{{ c.nombre_estado }}</span>
+                {% else %}
+                  <form method="POST" action="{{ url_for('recepcion.cambiar_estado_cita', idcita=c.idcita) }}" class="d-flex gap-1">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="idestado_cita" class="form-select form-select-sm" style="width:125px">
+                      {% for e in estados %}<option value="{{ e.idestado_cita }}" {{ 'selected' if e.idestado_cita==c.idestado_cita }}>{{ e.nombre_estado }}</option>{% endfor %}
+                    </select>
+                    <button class="btn btn-outline-secondary btn-sm">OK</button>
+                  </form>
+                {% endif %}
+              </td>
+              <td>
+                {% if not c.esta_pagada %}
+                <form method="POST" action="{{ url_for('recepcion.reprogramar_cita', idcita=c.idcita) }}" class="d-flex gap-1">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="datetime-local" name="fecha_hora" class="form-control form-control-sm" style="width:165px" required>
+                  <button class="btn btn-outline-warning btn-sm">Mover</button>
+                </form>
+                {% else %}-{% endif %}
+              </td>
+              <td class="d-flex gap-1">
+                <a href="{{ url_for('pagos.checkout', idcita=c.idcita) }}" class="btn btn-{{ 'outline-success' if c.esta_pagada else 'vet' }} btn-sm">
+                  {{ 'Saldada' if c.esta_pagada else 'Cobrar ($' ~ '{:,.0f}'.format(c.saldo_pendiente) ~ ')' }}
+                </a>
+                {% if c.wa_link %}<a href="{{ c.wa_link }}" target="_blank" class="btn btn-outline-success btn-sm">WA</a>{% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-muted py-3">Sin citas para el filtro seleccionado.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="tab-pane fade" id="tab-clientes">
+    <div class="row g-3 mb-3">
+      <div class="col-md-5">
+        <div class="card shadow-sm h-100">
+          <div class="card-header card-header-vet">Registrar Propietario</div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('recepcion.crear_dueno') }}" class="vstack gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="nombre_dueño" placeholder="Nombre completo" class="form-control form-control-sm" required>
+              <input type="text" name="documento_dueño" placeholder="Cédula (6-10 dígitos)" class="form-control form-control-sm" required>
+              <input type="text" name="telefono_dueño" placeholder="Celular (3XXXXXXXXX)" class="form-control form-control-sm" required>
+              <input type="email" name="email_dueño" placeholder="Correo electrónico (opcional)" class="form-control form-control-sm">
+              <button class="btn btn-vet btn-sm">Guardar Propietario</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-7">
+        <div class="card shadow-sm h-100">
+          <div class="card-header card-header-vet">Registrar Paciente (Mascota)</div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('recepcion.crear_mascota') }}" class="row g-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="col-md-6"><input type="text" name="nombre_mascota" placeholder="Nombre mascota" class="form-control form-control-sm" required></div>
+              <div class="col-md-6">
+                <select name="id_dueño" class="form-select form-select-sm" required>
+                  <option value="">Propietario...</option>
+                  {% for d in duenos %}<option value="{{ d.id_dueño }}">{{ d.nombre_dueño }} ({{ d.documento_dueño }})</option>{% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <select name="especie" class="form-select form-select-sm" required>
+                  {% for esp in especies %}<option value="{{ esp }}">{{ esp }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4"><input type="text" name="raza" placeholder="Raza" class="form-control form-control-sm"></div>
+              <div class="col-md-4">
+                <select name="sexo" class="form-select form-select-sm" required>
+                  <option value="Macho">Macho</option>
+                  <option value="Hembra">Hembra</option>
+                </select>
+              </div>
+              <div class="col-md-4"><input type="date" name="fecha_Nacimiento" class="form-control form-control-sm"></div>
+              <div class="col-md-3"><input type="number" step="0.01" name="peso" placeholder="Peso (kg)" class="form-control form-control-sm"></div>
+              <div class="col-md-5"><input type="text" name="alergias" placeholder="Alergias (opcional)" class="form-control form-control-sm"></div>
+              <div class="col-12"><button class="btn btn-vet btn-sm w-100">Guardar Paciente</button></div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-header">Propietarios Registrados</div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Nombre</th><th>Actualizar CC / Tel / Correo</th></tr></thead>
+              <tbody>
+                {% for d in duenos[:25] %}
+                <tr>
+                  <td><strong>{{ d.nombre_dueño }}</strong></td>
+                  <td>
+                    <form method="POST" action="{{ url_for('recepcion.editar_dueno', id_dueno=d.id_dueño) }}" class="d-flex gap-1">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="text" name="documento_dueño" value="{{ d.documento_dueño }}" class="form-control form-control-sm" style="width:95px">
+                      <input type="text" name="telefono_dueño" value="{{ d.telefono_dueño }}" class="form-control form-control-sm" style="width:105px" required>
+                      <input type="email" name="email_dueño" value="{{ d.email_dueño or '' }}" placeholder="Correo" class="form-control form-control-sm" style="width:130px">
+                      <button class="btn btn-outline-primary btn-sm">OK</button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-header">Mascotas Registradas</div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Mascota</th><th>Especie / Dueño</th><th>Peso (kg)</th></tr></thead>
+              <tbody>
+                {% for m in mascotas[:25] %}
+                <tr>
+                  <td><strong>{{ m.nombre_mascota }}</strong></td>
+                  <td>{{ m.especie }} — {{ m.nombre_dueño }}</td>
+                  <td>
+                    <form method="POST" action="{{ url_for('recepcion.editar_peso_mascota', idmascota=m.idmascota) }}" class="d-flex gap-1">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="number" step="0.01" name="peso" value="{{ m.peso or '' }}" class="form-control form-control-sm" style="width:80px" required>
+                      <button class="btn btn-outline-primary btn-sm">OK</button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="tab-pane fade" id="tab-farmacia">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header card-header-vet">Despachar Medicamento Recetado</div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('recepcion.registrar_entrega') }}" class="row g-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="col-md-7">
+            <select name="idtratamiento_medicamento" class="form-select form-select-sm" required>
+              <option value="">Selecciona receta médica...</option>
+              {% for r in recetas if not r.bloqueada_entrega %}
+              <option value="{{ r.idtratamiento_medicamento }}">#{{ r.idtratamiento_medicamento }} | {{ r.nombre_mascota }} — {{ r.nombre_Medicamento }} (Recetado: {{ r.cantidad_prescrita }}, Entregado: {{ r.entregado }}, Stock {{ r.nombre_sede }}: {{ r.stock_sede }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3"><input type="number" name="cantidad_entregada" min="1" placeholder="Cantidad a entregar" class="form-control form-control-sm" required></div>
+          <div class="col-md-2"><button class="btn btn-vet btn-sm w-100">Entregar</button></div>
+        </form>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-header">Recetas Pendientes / Activas</div>
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead><tr><th>Paciente</th><th>Medicamento</th><th>Entregado</th><th>Stock Sede</th><th>Estado</th></tr></thead>
+              <tbody>
+                {% for r in recetas %}
+                <tr>
+                  <td>{{ r.nombre_mascota }}</td><td>{{ r.nombre_Medicamento }}</td>
+                  <td>{{ r.entregado }} / {{ r.cantidad_prescrita }}</td><td>{{ r.stock_sede }} ({{ r.nombre_sede }})</td>
+                  <td><span class="badge bg-{{ 'danger' if r.bloqueada_entrega else 'success' }}">{{ r.motivo_bloqueo or 'Disponible' }}</span></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-header">Historial de Entregas</div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>#</th><th>Paciente</th><th>Medicamento</th><th>Cant.</th><th>Estado</th><th></th></tr></thead>
+              <tbody>
+                {% for em in entregas %}
+                <tr>
+                  <td>{{ em.id_entrega }}</td><td>{{ em.nombre_mascota }}</td><td>{{ em.nombre_Medicamento }}</td><td>{{ em.cantidad_entregada }}</td>
+                  <td><span class="badge bg-{{ 'success' if em.estado_entrega=='Entregada' else 'secondary' }}">{{ em.estado_entrega }}</span></td>
+                  <td>
+                    {% if em.estado_entrega == 'Entregada' %}
+                    <form method="POST" action="{{ url_for('recepcion.anular_entrega', id_entrega=em.id_entrega) }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn btn-outline-danger btn-sm">Anular</button>
+                    </form>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="tab-pane fade" id="tab-caja">
+    <div class="card shadow-sm mb-3">
+      <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <form method="GET" action="{{ url_for('recepcion.panel') }}" class="d-flex flex-wrap gap-2">
+          <input type="date" name="fecha_detalle" value="{{ fecha_detalle }}" class="form-control form-control-sm">
+          <select name="sede_detalle" class="form-select form-select-sm">
+            <option value="">Todas las sedes</option>
+            {% for s in sedes %}<option value="{{ s.idSede }}" {{ 'selected' if sede_detalle==s.idSede }}>{{ s.nombre_sede }}</option>{% endfor %}
+          </select>
+          <button class="btn btn-vet btn-sm">Consultar Cierre</button>
+        </form>
+        <a href="{{ url_for('pagos.exportar_cierre_csv', fecha=fecha_detalle, sede_id=sede_detalle) }}" class="btn btn-outline-success btn-sm">Exportar CSV</a>
+      </div>
+    </div>
+
+    <div class="row g-2 mb-3 text-center">
+      <div class="col-md-3"><div class="card shadow-sm p-2"><small class="text-muted">Efectivo Caja</small><strong>${{ "{:,.2f}".format(resumen_dia.efectivo) }}</strong></div></div>
+      <div class="col-md-3"><div class="card shadow-sm p-2"><small class="text-muted">Electrónico / Tarjeta</small><strong>${{ "{:,.2f}".format(resumen_dia.electronico) }}</strong></div></div>
+      <div class="col-md-3"><div class="card shadow-sm p-2"><small class="text-muted">Reembolsado</small><strong class="text-danger">${{ "{:,.2f}".format(resumen_dia.reembolsado) }}</strong></div></div>
+      <div class="col-md-3"><div class="card shadow-sm p-2"><small class="text-muted">Pagos Aprobados</small><strong>{{ resumen_dia.num_aprobados }}</strong></div></div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-header">Pagos del Día</div>
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead><tr><th>#</th><th>Cita</th><th>Paciente</th><th>Método</th><th>Monto</th><th>Estado</th><th></th></tr></thead>
+              <tbody>
+                {% for p in pagos %}
+                <tr>
+                  <td>{{ p.idpago }}</td><td>#{{ p.idcita }}</td><td>{{ p.nombre_mascota }}</td><td>{{ p.metodo_pago }}</td>
+                  <td>${{ "{:,.2f}".format(p.monto_total) }}</td>
+                  <td><span class="badge bg-{{ 'success' if p.estado_pago=='Aprobado' else 'secondary' }}">{{ p.estado_pago }}</span></td>
+                  <td><a href="{{ url_for('pagos.recibo', idpago=p.idpago) }}" class="btn btn-outline-primary btn-sm">Recibo</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-center text-muted py-2">Sin pagos en esta fecha.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-header">Detalle de Ítems Vendidos</div>
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead><tr><th>Tipo</th><th>Concepto</th><th>Cant.</th><th>Cita / Paciente</th><th class="text-end">Subtotal</th></tr></thead>
+              <tbody>
+                {% for v in vendidos_dia %}
+                <tr>
+                  <td>{{ v.categoria }}</td><td>{{ v.concepto }}</td><td>{{ v.cantidad }}</td>
+                  <td>#{{ v.idcita }} ({{ v.nombre_mascota }})</td><td class="text-end">${{ "{:,.2f}".format(v.subtotal) }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="text-center text-muted py-2">Sin ítems vendidos registrados.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

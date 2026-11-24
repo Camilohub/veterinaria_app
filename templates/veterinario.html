@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}Panel Clínico - Veterinaria App{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <h4 class="mb-0">Panel Clínico Veterinario</h4>
+    {% if vet_info %}
+    <small class="text-muted">Dr(a). {{ vet_info.nombre_veterinario }} — {{ vet_info.especialidad }} ({{ vet_info.nombre_sede }})</small>
+    {% endif %}
+  </div>
+  <div class="d-flex gap-2">
+    {% if session.get('idRol') in (1, 4) and todos_veterinarios %}
+    <form method="GET" action="{{ url_for('veterinario.panel') }}" class="d-flex gap-1">
+      <select name="idveterinario" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for v in todos_veterinarios if v.activo != 0 %}
+        <option value="{{ v.idveterinario }}" {{ 'selected' if vet_info and v.idveterinario == vet_info.idveterinario }}>{{ v.nombre_veterinario }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+    <form method="GET" action="{{ url_for('veterinario.panel') }}" class="d-flex gap-1">
+      {% if vet_info %}<input type="hidden" name="idveterinario" value="{{ vet_info.idveterinario }}">{% endif %}
+      <input type="text" name="buscar" value="{{ buscar_mascota }}" placeholder="Buscar mascota/dueño..." class="form-control form-control-sm">
+      <button class="btn btn-vet btn-sm">Filtrar</button>
+    </form>
+  </div>
+</div>
+
+{% if vet_info %}
+<ul class="nav nav-tabs mb-3" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-citas-vet" type="button">Mis Citas ({{ citas|length }})</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-consulta" type="button">Tratamientos, Recetas y Proc.</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-ficha" type="button">Vacunas y Ficha Clínica</button></li>
+</ul>
+
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="tab-citas-vet">
+    <div class="card shadow-sm">
+      <div class="card-header card-header-vet">Agenda Asignada</div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>#</th><th>Fecha/Hora</th><th>Paciente</th><th>Propietario</th><th>Motivo</th><th>Signos Vitales</th><th>Estado</th></tr></thead>
+          <tbody>
+            {% for c in citas %}
+            <tr>
+              <td>{{ c.idcita }}</td>
+              <td>{{ c.fecha_hora }}</td>
+              <td>
+                <a href="{{ url_for('veterinario.panel', mascota_id=c.idmascota) }}" class="fw-semibold text-decoration-none">{{ c.nombre_mascota }}</a>
+                <div class="small text-muted">{{ c.especie }} | {{ c.peso or '?' }} kg {% if c.alergias %}<span class="text-danger">({{ c.alergias }})</span>{% endif %}</div>
+              </td>
+              <td>{{ c.nombre_dueño }}<div class="small text-muted">CC {{ c.documento_dueño }}</div></td>
+              <td>{{ c.motivo or '-' }}</td>
+              <td>
+                <form method="POST" action="{{ url_for('veterinario.registrar_signos', idcita=c.idcita) }}" class="d-flex gap-1">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="text" name="signos_vitales" value="{{ c.signos_vitales or '' }}" placeholder="T°, FC, FR..." class="form-control form-control-sm" style="width:140px">
+                  <button class="btn btn-outline-primary btn-sm">OK</button>
+                </form>
+              </td>
+              <td>
+                {% if c.esta_saldada %}
+                  <span class="badge bg-success">{{ c.nombre_estado }} (Saldada)</span>
+                {% else %}
+                  <form method="POST" action="{{ url_for('veterinario.cambiar_estado', idcita=c.idcita) }}" class="d-flex gap-1">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="idestado_cita" class="form-select form-select-sm" style="width:130px">
+                      {% for e in estados %}<option value="{{ e.idestado_cita }}" {{ 'selected' if e.idestado_cita == c.idestado_cita }}>{{ e.nombre_estado }}</option>{% endfor %}
+                    </select>
+                    <button class="btn btn-outline-secondary btn-sm">Ir</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-muted py-3">No tienes citas asignadas.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="tab-pane fade" id="tab-consulta">
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header card-header-vet">Registrar Diagnóstico / Tratamiento</div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('veterinario.crear_tratamiento') }}" class="vstack gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="idcita" class="form-select form-select-sm" required>
+                <option value="">Selecciona cita...</option>
+                {% for c in citas if not c.esta_saldada %}<option value="{{ c.idcita }}">#{{ c.idcita }} - {{ c.nombre_mascota }} ({{ c.fecha_hora }})</option>{% endfor %}
+              </select>
+              <input type="text" name="diagnostico" placeholder="Diagnóstico clínico" class="form-control form-control-sm" required>
+              <textarea name="indicaciones" rows="2" placeholder="Indicaciones médicas" class="form-control form-control-sm" required></textarea>
+              <button class="btn btn-vet btn-sm">Guardar Tratamiento</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header card-header-vet">Recetar Medicamento</div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('veterinario.crear_receta') }}" class="vstack gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="idtratamiento" class="form-select form-select-sm" required>
+                <option value="">Selecciona tratamiento...</option>
+                {% for t in tratamientos if not t.cita_saldada %}<option value="{{ t.idtratamiento }}">#{{ t.idtratamiento }} - {{ t.nombre_mascota }} ({{ t.diagnostico[:25] }})</option>{% endfor %}
+              </select>
+              <select name="idMedicamento" class="form-select form-select-sm" required>
+                <option value="">Medicamento...</option>
+                {% for m in medicamentos %}<option value="{{ m.idMedicamento }}">{{ m.nombre_Medicamento }} (${{ "{:,.0f}".format(m.precio) }})</option>{% endfor %}
+              </select>
+              <div class="row g-1">
+                <div class="col-4"><input type="number" name="cantidad_prescrita" min="1" value="1" class="form-control form-control-sm" required></div>
+                <div class="col-8"><input type="text" name="dosis" placeholder="Ej: 1 tab c/12h x 5d" class="form-control form-control-sm" required></div>
+              </div>
+              <button class="btn btn-vet btn-sm">Agregar a Receta</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header card-header-vet">Agregar Procedimiento</div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('veterinario.agregar_procedimiento') }}" class="vstack gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="idcita" class="form-select form-select-sm" required>
+                <option value="">Selecciona cita...</option>
+                {% for c in citas if not c.esta_saldada %}<option value="{{ c.idcita }}">#{{ c.idcita }} - {{ c.nombre_mascota }}</option>{% endfor %}
+              </select>
+              <select name="idProcedimiento" class="form-select form-select-sm" required>
+                <option value="">Procedimiento...</option>
+                {% for pr in procedimientos %}<option value="{{ pr.idProcedimiento }}">{{ pr.nombre_Procedimiento }} (${{ "{:,.0f}".format(pr.costo) }})</option>{% endfor %}
+              </select>
+              <input type="text" name="observaciones" placeholder="Observaciones (opcional)" class="form-control form-control-sm">
+              <button class="btn btn-vet btn-sm">Asociar Procedimiento</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-header">Tratamientos Registrados</div>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>Cita</th><th>Paciente</th><th>Diagnóstico</th><th></th></tr></thead>
+            <tbody>
+              {% for t in tratamientos %}
+              <tr>
+                <td>#{{ t.idcita }}</td><td>{{ t.nombre_mascota }}</td><td>{{ t.diagnostico }}</td>
+                <td>
+                  {% if not t.cita_saldada %}
+                  <form method="POST" action="{{ url_for('veterinario.eliminar_tratamiento', idtratamiento=t.idtratamiento) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-outline-danger btn-sm">X</button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-header">Recetas Médicas</div>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>Paciente</th><th>Medicamento</th><th>Cant/Dosis</th><th></th></tr></thead>
+            <tbody>
+              {% for r in recetas %}
+              <tr>
+                <td>{{ r.nombre_mascota }}</td><td>{{ r.nombre_Medicamento }}</td><td>{{ r.cantidad_prescrita }} ({{ r.dosis }})</td>
+                <td>
+                  {% if not r.cita_saldada %}
+                  <form method="POST" action="{{ url_for('veterinario.eliminar_receta', idtm=r.idtratamiento_medicamento) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-outline-danger btn-sm">X</button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="tab-pane fade" id="tab-ficha">
+    <div class="row g-3 mb-3">
+      <div class="col-md-5">
+        <div class="card shadow-sm">
+          <div class="card-header card-header-vet">Registrar Vacuna</div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('veterinario.registrar_vacuna') }}" class="vstack gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="idmascota" class="form-select form-select-sm" required>
+                {% for m in mascotas_ficha %}<option value="{{ m.idmascota }}">{{ m.nombre_mascota }} ({{ m.nombre_dueño }})</option>{% endfor %}
+              </select>
+              <input type="text" name="nombre_vacuna" placeholder="Nombre de la vacuna" class="form-control form-control-sm" required>
+              <input type="text" name="lote" placeholder="Lote (opcional)" class="form-control form-control-sm">
+              <div class="row g-1">
+                <div class="col-6"><label class="small text-muted">Aplicación</label><input type="date" name="fecha_aplicacion" class="form-control form-control-sm" required></div>
+                <div class="col-6"><label class="small text-muted">Próxima dosis</label><input type="date" name="proxima_dosis" class="form-control form-control-sm"></div>
+              </div>
+              <button class="btn btn-vet btn-sm">Guardar Vacuna</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-7">
+        <div class="card shadow-sm">
+          <div class="card-header card-header-vet d-flex justify-content-between align-items-center">
+            <span>Ficha Clínica del Paciente</span>
+            <form method="GET" action="{{ url_for('veterinario.panel') }}" class="d-flex gap-1">
+              <select name="mascota_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                {% for m in mascotas_ficha %}<option value="{{ m.idmascota }}" {{ 'selected' if ficha_mascota and m.idmascota == ficha_mascota.idmascota }}>{{ m.nombre_mascota }} — {{ m.nombre_dueño }}</option>{% endfor %}
+              </select>
+            </form>
+          </div>
+          <div class="card-body">
+            {% if ficha_mascota %}
+            <p class="mb-2 small"><strong>{{ ficha_mascota.nombre_mascota }}</strong> ({{ ficha_mascota.especie }} / {{ ficha_mascota.raza or 'Mestizo' }}) — Propietario: {{ ficha_mascota.nombre_dueño }} ({{ ficha_mascota.telefono_dueño }})</p>
+            <form method="POST" action="{{ url_for('veterinario.actualizar_ficha_mascota', idmascota=ficha_mascota.idmascota) }}" class="row g-2 mb-3">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="col-4"><input type="number" step="0.01" name="peso" value="{{ ficha_mascota.peso or '' }}" placeholder="Peso (kg)" class="form-control form-control-sm"></div>
+              <div class="col-6"><input type="text" name="alergias" value="{{ ficha_mascota.alergias or '' }}" placeholder="Alergias conocidas" class="form-control form-control-sm"></div>
+              <div class="col-2"><button class="btn btn-outline-primary btn-sm w-100">Guardar</button></div>
+            </form>
+            <h6 class="small fw-bold">Historial de Consultas</h6>
+            <ul class="list-group list-group-flush small mb-2">
+              {% for h in ficha_historial %}
+              <li class="list-group-item px-0"><strong>{{ h.fecha_hora }}</strong> ({{ h.nombre_estado }}): {{ h.motivo or '' }} — <em>{{ h.diagnostico or 'Sin diagnóstico' }}</em></li>
+              {% else %}<li class="list-group-item px-0 text-muted">Sin historial clínico.</li>{% endfor %}
+            </ul>
+            <h6 class="small fw-bold">Vacunas Aplicadas</h6>
+            <div class="small text-muted">{% for fv in ficha_vacunas %}{{ fv.nombre_vacuna }} ({{ fv.fecha_aplicacion }}){% if not loop.last %}, {% endif %}{% else %}Ninguna registrada.{% endfor %}</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

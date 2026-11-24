@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Caja Cita #{{ cita.idcita }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Facturación y Cobro — Cita #{{ cita.idcita }}</h4>
+  <a href="{{ url_for('panel') }}" class="btn btn-outline-secondary btn-sm">Volver</a>
+</div>
+<div class="card shadow-sm mb-3">
+  <div class="card-body row g-2 small">
+    <div class="col-md-4"><strong>Paciente:</strong> {{ cita.nombre_mascota }} ({{ cita.especie }})</div>
+    <div class="col-md-4"><strong>Propietario:</strong> {{ cita.nombre_dueño }} (CC {{ cita.documento_dueño }})</div>
+    <div class="col-md-4"><strong>Sede / Vet:</strong> {{ cita.nombre_sede }} — {{ cita.nombre_veterinario }}</div>
+  </div>
+</div>
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header card-header-vet">Detalle de Cargos</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Concepto</th><th>Cant.</th><th class="text-end">Subtotal</th></tr></thead>
+          <tbody>
+            {% for pr in procedimientos %}
+            <tr><td>[Proc] {{ pr.nombre_Procedimiento }}</td><td>1</td><td class="text-end">${{ "{:,.2f}".format(pr.precio_cobrado) }}</td></tr>
+            {% endfor %}
+            {% for em in entregas %}
+            <tr><td>[Med] {{ em.nombre_Medicamento }}</td><td>{{ em.cantidad_entregada }}</td><td class="text-end">${{ "{:,.2f}".format(em.subtotal) }}</td></tr>
+            {% endfor %}
+            {% if not procedimientos and not entregas %}
+            <tr><td colspan="3" class="text-center text-muted py-3">Sin cargos registrados en esta cita.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header card-header-vet">Resumen de Pago</div>
+      <div class="card-body">
+        <p class="mb-1 d-flex justify-content-between"><span>Total cita:</span><strong>${{ "{:,.2f}".format(total_cita) }}</strong></p>
+        <p class="mb-1 d-flex justify-content-between text-success"><span>Total pagado:</span><strong>${{ "{:,.2f}".format(total_pagado) }}</strong></p>
+        <p class="mb-3 d-flex justify-content-between text-danger"><span>Saldo pendiente:</span><strong>${{ "{:,.2f}".format(saldo_pendiente) }}</strong></p>
+        {% if esta_saldada %}
+          <div class="alert alert-success py-2 mb-0">Cita saldada en su totalidad.</div>
+        {% elif saldo_pendiente > 0 %}
+          <form method="POST" action="{{ url_for('pagos.procesar', idcita=cita.idcita) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-2">
+              <label class="form-label small">Monto a cobrar</label>
+              <input type="number" step="0.01" min="0.01" max="{{ saldo_pendiente }}" name="monto_total" value="{{ '%.2f'|format(saldo_pendiente) }}" class="form-control form-control-sm" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small">Método de pago</label>
+              <select name="metodo_pago" class="form-select form-select-sm">
+                <option value="Efectivo Caja">Efectivo Caja</option>
+                <option value="Transferencia / Nequi">Transferencia / Nequi</option>
+                <option value="Tarjeta">Tarjeta</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small">Referencia (opcional)</label>
+              <input type="text" name="referencia_externa" class="form-control form-control-sm">
+            </div>
+            <button type="submit" class="btn btn-vet btn-sm w-100">Registrar Pago</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+<div class="card shadow-sm mt-2">
+  <div class="card-header">Historial de Pagos</div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead><tr><th>#</th><th>Fecha</th><th>Método</th><th>Ref.</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr></thead>
+      <tbody>
+        {% for p in pagos_cita %}
+        <tr>
+          <td>{{ p.idpago }}</td><td>{{ p.fecha_pago }}</td><td>{{ p.metodo_pago }}</td><td>{{ p.referencia_externa or '-' }}</td>
+          <td>${{ "{:,.2f}".format(p.monto_total) }}</td>
+          <td><span class="badge bg-{{ 'success' if p.estado_pago=='Aprobado' else 'secondary' }}">{{ p.estado_pago }}</span></td>
+          <td class="d-flex gap-1">
+            <a href="{{ url_for('pagos.recibo', idpago=p.idpago) }}" class="btn btn-outline-primary btn-sm">Recibo</a>
+            {% if p.estado_pago == 'Aprobado' %}
+            <form method="POST" action="{{ url_for('pagos.reembolsar', idpago=p.idpago) }}" class="d-flex gap-1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="motivo_reembolso" placeholder="Motivo" class="form-control form-control-sm" style="width:120px">
+              <button type="submit" class="btn btn-outline-danger btn-sm">Reembolsar</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-2">No hay pagos registrados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

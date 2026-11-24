@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Recibo #{{ pago.idpago }}{% endblock %}
+{% block content %}
+<div class="card shadow-sm mx-auto" style="max-width: 720px;">
+  <div class="card-header card-header-vet d-flex justify-content-between align-items-center">
+    <span>Comprobante de Pago #{{ pago.idpago }}</span>
+    <span class="badge bg-light text-dark">{{ pago.estado_pago }}</span>
+  </div>
+  <div class="card-body">
+    <div class="row small mb-3">
+      <div class="col-6">
+        <p class="mb-1"><strong>Sede:</strong> {{ pago.nombre_sede }}</p>
+        <p class="mb-1"><strong>Propietario:</strong> {{ pago.nombre_dueño }} ({{ pago.documento_dueño }})</p>
+        <p class="mb-1"><strong>Paciente:</strong> {{ pago.nombre_mascota }} ({{ pago.especie }})</p>
+      </div>
+      <div class="col-6 text-end">
+        <p class="mb-1"><strong>Fecha pago:</strong> {{ pago.fecha_pago }}</p>
+        <p class="mb-1"><strong>Cita #{{ pago.idcita }}:</strong> {{ pago.fecha_hora }}</p>
+        <p class="mb-1"><strong>Método:</strong> {{ pago.metodo_pago }} {{ '(' ~ pago.referencia_externa ~ ')' if pago.referencia_externa else '' }}</p>
+        <p class="mb-1"><strong>Cajero:</strong> {{ pago.cajero or 'Sistema' }}</p>
+      </div>
+    </div>
+    <table class="table table-sm table-bordered">
+      <thead><tr><th>Concepto</th><th class="text-center">Cant.</th><th class="text-end">Valor</th></tr></thead>
+      <tbody>
+        {% for pr in procedimientos %}
+        <tr><td>{{ pr.nombre_Procedimiento }}</td><td class="text-center">1</td><td class="text-end">${{ "{:,.2f}".format(pr.precio_cobrado) }}</td></tr>
+        {% endfor %}
+        {% for em in entregas %}
+        <tr><td>{{ em.nombre_Medicamento }}</td><td class="text-center">{{ em.cantidad_entregada }}</td><td class="text-end">${{ "{:,.2f}".format(em.subtotal) }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="text-end">
+      <p class="mb-1">Total cita: <strong>${{ "{:,.2f}".format(total_cita) }}</strong></p>
+      <p class="mb-1 fs-5 text-success">Monto este recibo: <strong>${{ "{:,.2f}".format(pago.monto_total) }}</strong></p>
+      <p class="mb-0 small text-muted">Saldo pendiente: ${{ "{:,.2f}".format(saldo_pendiente) }}</p>
+    </div>
+    <div class="mt-4 d-flex justify-content-between no-print">
+      <a href="{{ url_for('pagos.checkout', idcita=pago.idcita) }}" class="btn btn-outline-secondary btn-sm">Volver a Caja</a>
+      <button onclick="window.print()" class="btn btn-vet btn-sm">Imprimir Recibo</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
