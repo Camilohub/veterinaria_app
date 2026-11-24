@@ -216,14 +216,6 @@ def admin_panel():
     )
     auditorias = cursor.fetchall()
 
-    cursor.close()
-    conn.close()
-
-    stock_bajo = sum(1 for i in inventario if (i["stock"] or 0) < 5)
-    proximos_vencer = sum(
-        1 for i in inventario if i["dias_vence"] is not None and i["dias_vence"] <= 30
-    )
-
     cursor.execute(
         """
         SELECT m.`idmascota` AS idmascota, m.`nombre_mascota` AS nombre, m.`especie` AS especie, m.`raza` AS raza, COALESCE(p.`nombre_dueño`, 'Sin propietario') AS propietario
@@ -233,6 +225,14 @@ def admin_panel():
         """
     )
     mascotas = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    stock_bajo = sum(1 for i in inventario if (i["stock"] or 0) < 5)
+    proximos_vencer = sum(
+        1 for i in inventario if i["dias_vence"] is not None and i["dias_vence"] <= 30
+    )
 
     return render_template(
         "admin.html",
