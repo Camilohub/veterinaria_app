@@ -374,10 +374,10 @@ def admin_crear_usuario():
         flash("Solo el Super Admin puede crear cuentas de Administrador.", "warning")
         return redirect(url_for("admin_panel"))
 
-    id_vet = request.form.get("idveterinario") or None
-    if nuevo_rol == ROL_VETERINARIO and not id_vet:
-        flash("Selecciona el perfil de veterinario para asignarlo a la cuenta.", "warning")
+    if nuevo_rol == ROL_VETERINARIO:
+        flash("Los veterinarios y su cuenta se crean desde el formulario 'Nuevo Veterinario'.", "warning")
         return redirect(url_for("admin_panel"))
+    id_vet = None
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -688,19 +688,23 @@ def admin_toggle_procedimiento(idproc):
 def admin_sede():
     if session.get("idRol") not in (ROL_ADMIN, ROL_SUPERADMIN):
         return redirect(url_for("panel"))
+    nombre = (request.form.get("nombre_sede") or "").strip()
+    direccion = (request.form.get("direccion_sede") or "").strip()
+    ciudad = (request.form.get("ciudad") or "").strip()
+    telefono = (request.form.get("telefono_sede") or "").strip()
+    if not nombre or not direccion or not ciudad or not telefono:
+        flash("Completa nombre, dirección, ciudad y teléfono de la sede.", "warning")
+        return redirect(url_for("admin_panel"))
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "INSERT INTO sede (nombre_sede, direccion_sede, telefono_sede) VALUES (%s, %s, %s)",
-            (
-                request.form["nombre_sede"].strip(),
-                request.form["direccion_sede"].strip(),
-                (request.form.get("telefono_sede") or "").strip() or None,
-            ),
+            "INSERT INTO sede (nombre_sede, direccion_sede, ciudad, telefono_sede) VALUES (%s, %s, %s, %s)",
+            (nombre, direccion, ciudad, telefono),
         )
+        registrar_auditoria(cursor, session["idusuario"], "CREAR_SEDE", f"Creó sede '{nombre}' en {ciudad}")
         conn.commit()
-        flash("Sede creada.", "success")
+        flash("Sede creada correctamente.", "success")
     except mysql.connector.Error as err:
         conn.rollback()
         flash(f"Error: {err.msg}", "danger")
