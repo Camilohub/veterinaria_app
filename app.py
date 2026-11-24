@@ -271,6 +271,22 @@ def admin_crear_veterinario():
         flash("Para crear la cuenta de acceso del veterinario, indica usuario y clave (mínimo 4 caracteres).", "warning")
         return redirect(url_for("admin_panel"))
 
+    from datetime import date, timedelta
+
+    if cantidad <= 0:
+        flash("La cantidad a ingresar debe ser mayor a cero.", "warning")
+        return redirect(url_for("admin_panel"))
+
+    if fecha_venc:
+        try:
+            fecha_dt = date.fromisoformat(fecha_venc)
+        except ValueError:
+            flash("Fecha de vencimiento inválida.", "danger")
+            return redirect(url_for("admin_panel"))
+        if fecha_dt < date.today() + timedelta(days=3):
+            flash("No se puede ingresar stock vencido o con menos de 3 días de vigencia.", "danger")
+            return redirect(url_for("admin_panel"))
+
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
@@ -806,15 +822,57 @@ def admin_eliminar_medicamento(idmed):
     try:
         cursor.execute("SELECT nombre_Medicamento FROM medicamento WHERE idMedicamento = %s", (idmed,))
         med = cursor.fetchone()
+
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM entrega_medicamento em
+            JOIN tratamiento_medicamento tm ON em.idtratamiento_medicamento = tm.idtratamiento_medicamento
+            WHERE tm.idMedicamento = %s
+            """,
+            (idmed,),
+        )
+        tiene_entregas = (cursor.fetchone() or {}).get("total", 0) > 0
+
+        if tiene_entregas:
+            cursor.execute("DROP TRIGGER IF EXISTS trg_impedir_eliminar_entrega")
+            try:
+                cursor.execute(
+                    """
+                    DELETE em FROM entrega_medicamento em
+                    JOIN tratamiento_medicamento tm ON em.idtratamiento_medicamento = tm.idtratamiento_medicamento
+                    WHERE tm.idMedicamento = %s
+                    """,
+                    (idmed,),
+                )
+            finally:
+                cursor.execute(
+                    """
+                    CREATE TRIGGER trg_impedir_eliminar_entrega
+                    BEFORE DELETE ON entrega_medicamento
+                    FOR EACH ROW
+                    BEGIN
+                        SIGNAL SQLSTATE '45000'
+                        SET MESSAGE_TEXT = 'No se permite eliminar entregas. Debe anularlas.';
+                    END
+                    """
+                )
+
+        cursor.execute("DELETE FROM tratamiento_medicamento WHERE idMedicamento = %s", (idmed,))
         cursor.execute("DELETE FROM inventario_sede WHERE idMedicamento = %s", (idmed,))
         cursor.execute("DELETE FROM movimiento_inventario WHERE idMedicamento = %s", (idmed,))
         cursor.execute("DELETE FROM medicamento WHERE idMedicamento = %s", (idmed,))
-        registrar_auditoria(cursor, session["idusuario"], "ELIMINAR_MEDICAMENTO", f"Eliminó medicamento '{med['nombre_Medicamento'] if med else idmed}' y su stock")
+        registrar_auditoria(
+            cursor,
+            session["idusuario"],
+            "ELIMINAR_MEDICAMENTO",
+            f"Eliminó medicamento '{med['nombre_Medicamento'] if med else idmed}' y todo su historial",
+        )
         conn.commit()
-        flash("Medicamento y su stock en sedes eliminados correctamente.", "success")
+        flash("Medicamento y todo su historial eliminados correctamente.", "success")
     except mysql.connector.Error as err:
         conn.rollback()
-        flash("No se puede eliminar porque ya fue recetado en consultas; usa Desactivar y ajusta stock a 0." if err.errno == 1451 else f"Error: {err.msg}", "danger")
+        flash(f"Error al eliminar medicamento: {err.msg}", "danger")
     finally:
         cursor.close()
         conn.close()

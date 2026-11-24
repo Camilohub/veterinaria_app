@@ -39,6 +39,12 @@ def checkout(idcita):
         flash("Cita no encontrada.", "warning")
         return redirect(url_for("panel"))
 
+    total_chk, pagado_chk, _, _ = calcular_balance_cita(cursor, idcita)
+    if total_chk > 0 and pagado_chk >= total_chk - 0.01 and cita["idestado_cita"] not in (8, 9, 10):
+        cursor.execute("UPDATE cita SET idestado_cita = 8 WHERE idcita = %s", (idcita,))
+        conn.commit()
+        cita["idestado_cita"] = 8
+
     cursor.execute(
         """
         SELECT cp.*, pr.nombre_Procedimiento
@@ -117,6 +123,11 @@ def procesar(idcita):
             (idcita, monto, metodo, referencia, session["idusuario"]),
         )
         idpago = cursor.lastrowid
+        if monto >= saldo_pendiente - 0.01:
+            cursor.execute(
+                "UPDATE cita SET idestado_cita = 8 WHERE idcita = %s AND idestado_cita NOT IN (9, 10)",
+                (idcita,),
+            )
         registrar_auditoria(
             cursor,
             session["idusuario"],
