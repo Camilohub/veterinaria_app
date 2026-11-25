@@ -27,7 +27,7 @@
 </div>
 
 {% if vet_info %}
-<ul class="nav nav-tabs mb-3" role="tablist">
+<ul class="nav nav-tabs mb-3" id="vetTabs" role="tablist">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-citas-vet" type="button">Mis Citas ({{ citas|length }})</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-consulta" type="button">Tratamientos, Recetas y Proc.</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-ficha" type="button">Vacunas y Ficha Clínica</button></li>
@@ -89,11 +89,11 @@
             <form method="POST" action="{{ url_for('veterinario.crear_tratamiento') }}" class="vstack gap-2">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <select name="idcita" class="form-select form-select-sm" required>
-                <option value="">Selecciona cita...</option>
-                {% for c in citas if not c.esta_saldada %}<option value="{{ c.idcita }}">#{{ c.idcita }} - {{ c.nombre_mascota }} ({{ c.fecha_hora }})</option>{% endfor %}
+                <option value="">Selecciona cita activa...</option>
+                {% for c in citas if not c.esta_saldada and c.idestado_cita not in (9, 10) %}<option value="{{ c.idcita }}">#{{ c.idcita }} - {{ c.nombre_mascota }} ({{ c.fecha_hora }})</option>{% endfor %}
               </select>
-              <input type="text" name="diagnostico" placeholder="Diagnóstico clínico" class="form-control form-control-sm" required>
-              <textarea name="indicaciones" rows="2" placeholder="Indicaciones médicas" class="form-control form-control-sm" required></textarea>
+              <input type="text" name="diagnostico" placeholder="Diagnóstico clínico" minlength="3" class="form-control form-control-sm" required>
+              <textarea name="indicaciones" rows="2" placeholder="Indicaciones médicas" minlength="3" class="form-control form-control-sm" required></textarea>
               <button class="btn btn-vet btn-sm">Guardar Tratamiento</button>
             </form>
           </div>
@@ -114,12 +114,30 @@
                 {% for m in medicamentos %}<option value="{{ m.idMedicamento }}">{{ m.nombre_Medicamento }} (${{ "{:,.0f}".format(m.precio) }})</option>{% endfor %}
               </select>
               <div class="row g-1">
-                <div class="col-4"><input type="number" name="cantidad_prescrita" min="1" value="1" title="Cantidad" placeholder="Cant." class="form-control form-control-sm" required></div>
-                <div class="col-8"><input type="text" name="dosis" placeholder="Dosis (Ej: 1 tableta)" class="form-control form-control-sm" required></div>
+                <div class="col-4">
+                  <label class="small text-muted mb-0">Cant. (1-100)</label>
+                  <input type="number" name="cantidad_prescrita" min="1" max="100" value="1" class="form-control form-control-sm" required>
+                </div>
+                <div class="col-3">
+                  <label class="small text-muted mb-0">Dosis</label>
+                  <input type="number" step="0.25" name="dosis_num" min="0.25" max="10" value="1" class="form-control form-control-sm" required>
+                </div>
+                <div class="col-5">
+                  <label class="small text-muted mb-0">Unidad</label>
+                  <select name="dosis_unidad" class="form-select form-select-sm" required>
+                    {% for u in unidades_dosis %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+                  </select>
+                </div>
               </div>
               <div class="row g-1">
-                <div class="col-7"><input type="text" name="frecuencia" placeholder="Frecuencia (Ej: Cada 12h)" class="form-control form-control-sm" required></div>
-                <div class="col-5"><input type="number" name="duracion_dias" min="1" value="5" title="Duración en días" placeholder="Días" class="form-control form-control-sm" required></div>
+                <div class="col-6">
+                  <label class="small text-muted mb-0">Cada (1-72 h)</label>
+                  <input type="number" name="frecuencia_horas" min="1" max="72" value="12" class="form-control form-control-sm" required>
+                </div>
+                <div class="col-6">
+                  <label class="small text-muted mb-0">Días (1-60)</label>
+                  <input type="number" name="duracion_dias" min="1" max="60" value="5" class="form-control form-control-sm" required>
+                </div>
               </div>
               <button class="btn btn-vet btn-sm">Agregar a Receta</button>
             </form>
@@ -133,8 +151,8 @@
             <form method="POST" action="{{ url_for('veterinario.agregar_procedimiento') }}" class="vstack gap-2">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <select name="idcita" class="form-select form-select-sm" required>
-                <option value="">Selecciona cita...</option>
-                {% for c in citas if not c.esta_saldada %}<option value="{{ c.idcita }}">#{{ c.idcita }} - {{ c.nombre_mascota }}</option>{% endfor %}
+                <option value="">Selecciona cita activa...</option>
+                {% for c in citas if not c.esta_saldada and c.idestado_cita not in (9, 10) %}<option value="{{ c.idcita }}">#{{ c.idcita }} - {{ c.nombre_mascota }}</option>{% endfor %}
               </select>
               <select name="idProcedimiento" class="form-select form-select-sm" required>
                 <option value="">Procedimiento...</option>
@@ -175,11 +193,11 @@
         <div class="card shadow-sm">
           <div class="card-header">Recetas Médicas</div>
           <table class="table table-sm mb-0">
-            <thead><tr><th>Paciente</th><th>Medicamento</th><th>Cant/Dosis</th><th></th></tr></thead>
+            <thead><tr><th>Paciente</th><th>Medicamento</th><th>Posología</th><th></th></tr></thead>
             <tbody>
               {% for r in recetas %}
               <tr>
-                <td>{{ r.nombre_mascota }}</td><td>{{ r.nombre_Medicamento }}</td><td>{{ r.cantidad_prescrita }} ({{ r.dosis }})</td>
+                <td>{{ r.nombre_mascota }}</td><td>{{ r.nombre_Medicamento }}</td><td>{{ r.cantidad_prescrita }} uds — {{ r.dosis }} ({{ r.frecuencia }}, {{ r.duracion_dias }}d)</td>
                 <td>
                   {% if not r.cita_saldada %}
                   <form method="POST" action="{{ url_for('veterinario.eliminar_receta', idtm=r.idtratamiento_medicamento) }}">
@@ -196,6 +214,7 @@
       </div>
     </div>
   </div>
+
   <div class="tab-pane fade" id="tab-ficha">
     <div class="row g-3 mb-3">
       <div class="col-md-5">
@@ -207,11 +226,14 @@
               <select name="idmascota" class="form-select form-select-sm" required>
                 {% for m in mascotas_ficha %}<option value="{{ m.idmascota }}">{{ m.nombre_mascota }} ({{ m.nombre_dueño }})</option>{% endfor %}
               </select>
-              <input type="text" name="nombre_vacuna" placeholder="Nombre de la vacuna" class="form-control form-control-sm" required>
+              <select name="nombre_vacuna" class="form-select form-select-sm" required>
+                <option value="">Selecciona vacuna...</option>
+                {% for vac in vacunas_catalogo %}<option value="{{ vac }}">{{ vac }}</option>{% endfor %}
+              </select>
               <input type="text" name="lote" placeholder="Lote (opcional)" class="form-control form-control-sm">
               <div class="row g-1">
-                <div class="col-6"><label class="small text-muted">Aplicación</label><input type="date" name="fecha_aplicacion" class="form-control form-control-sm" required></div>
-                <div class="col-6"><label class="small text-muted">Próxima dosis</label><input type="date" name="proxima_dosis" class="form-control form-control-sm"></div>
+                <div class="col-6"><label class="small text-muted">Aplicación</label><input type="date" name="fecha_aplicacion" max="{{ hoy }}" class="form-control form-control-sm" required></div>
+                <div class="col-6"><label class="small text-muted">Próxima dosis</label><input type="date" name="proxima_dosis" min="{{ hoy }}" class="form-control form-control-sm"></div>
               </div>
               <button class="btn btn-vet btn-sm">Guardar Vacuna</button>
             </form>
@@ -223,6 +245,7 @@
           <div class="card-header card-header-vet d-flex justify-content-between align-items-center">
             <span>Ficha Clínica del Paciente</span>
             <form method="GET" action="{{ url_for('veterinario.panel') }}" class="d-flex gap-1">
+              <input type="hidden" name="tab" value="tab-ficha">
               <select name="mascota_id" class="form-select form-select-sm" onchange="this.form.submit()">
                 {% for m in mascotas_ficha %}<option value="{{ m.idmascota }}" {{ 'selected' if ficha_mascota and m.idmascota == ficha_mascota.idmascota }}>{{ m.nombre_mascota }} — {{ m.nombre_dueño }}</option>{% endfor %}
               </select>
@@ -230,10 +253,10 @@
           </div>
           <div class="card-body">
             {% if ficha_mascota %}
-            <p class="mb-2 small"><strong>{{ ficha_mascota.nombre_mascota }}</strong> ({{ ficha_mascota.especie }} / {{ ficha_mascota.raza or 'Mestizo' }}) — Propietario: {{ ficha_mascota.nombre_dueño }} ({{ ficha_mascota.telefono_dueño }})</p>
+            <p class="mb-2 small"><strong>{{ ficha_mascota.nombre_mascota }}</strong> ({{ ficha_mascota.especie }} / {{ ficha_mascota.raza or 'Mestizo' }} — {{ ficha_mascota.sexo or '-' }}) — Propietario: {{ ficha_mascota.nombre_dueño }} ({{ ficha_mascota.telefono_dueño }})</p>
             <form method="POST" action="{{ url_for('veterinario.actualizar_ficha_mascota', idmascota=ficha_mascota.idmascota) }}" class="row g-2 mb-3">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <div class="col-4"><input type="number" step="0.01" name="peso" value="{{ ficha_mascota.peso or '' }}" placeholder="Peso (kg)" class="form-control form-control-sm"></div>
+              <div class="col-4"><input type="number" step="0.01" min="0.1" max="120" name="peso" value="{{ ficha_mascota.peso or '' }}" placeholder="Peso (kg)" class="form-control form-control-sm"></div>
               <div class="col-6"><input type="text" name="alergias" value="{{ ficha_mascota.alergias or '' }}" placeholder="Alergias conocidas" class="form-control form-control-sm"></div>
               <div class="col-2"><button class="btn btn-outline-primary btn-sm w-100">Guardar</button></div>
             </form>
@@ -252,5 +275,28 @@
     </div>
   </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const params = new URLSearchParams(window.location.search);
+  const tabParam = params.get("tab") || localStorage.getItem("vet_active_tab");
+  if (tabParam) {
+    const targetId = tabParam.startsWith("#") ? tabParam : "#" + tabParam;
+    const btn = document.querySelector(`[data-bs-target="${targetId}"]`);
+    if (btn && window.bootstrap) {
+      new bootstrap.Tab(btn).show();
+    }
+  }
+  document.querySelectorAll('#vetTabs button[data-bs-toggle="tab"]').forEach(function (el) {
+    el.addEventListener("shown.bs.tab", function (ev) {
+      const id = ev.target.getAttribute("data-bs-target").replace("#", "");
+      localStorage.setItem("vet_active_tab", id);
+      const url = new URL(window.location);
+      url.searchParams.set("tab", id);
+      window.history.replaceState({}, "", url);
+    });
+  });
+});
+</script>
 {% endif %}
 {% endblock %}

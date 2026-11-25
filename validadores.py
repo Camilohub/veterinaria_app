@@ -150,3 +150,7 @@ def calcular_balance_cita(cursor, idcita):
 def cita_saldada(cursor, idcita):
     _, _, _, saldada = calcular_balance_cita(cursor, idcita)
     return saldada
+
+from validaciones import *  # noqa: F401,F403
+from validaciones import _parece_teclazo
+from validaciones import validar_item_catalogo, validar_descripcion_opcional

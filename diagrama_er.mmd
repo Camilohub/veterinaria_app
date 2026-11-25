@@ -1,0 +1,201 @@
+erDiagram
+    dueño {
+int id_dueño PK
+varchar nombre_dueño
+varchar documento_dueño
+varchar telefono_dueño
+varchar email_dueño
+    }
+    estado_cita {
+int idestado_cita PK
+varchar nombre_estado
+    }
+    mascota {
+int idmascota PK
+varchar nombre_mascota
+varchar especie
+varchar raza
+date fecha_Nacimiento
+int id_dueño FK
+varchar sexo
+decimal peso
+varchar alergias
+enum estado_paciente
+    }
+    medicamento {
+int idMedicamento PK
+varchar nombre_Medicamento
+decimal precio
+tinyint activo
+    }
+    procedimiento {
+int idProcedimiento PK
+varchar nombre_Procedimiento
+varchar descripcion_procedimiento
+decimal costo
+tinyint activo
+    }
+    rol {
+int idRol PK
+varchar nombre_rol
+varchar descripcion
+    }
+    sede {
+int idSede PK
+varchar nombre_sede
+varchar direccion_sede
+varchar ciudad
+varchar telefono_sede
+    }
+    vacuna {
+int idvacuna PK
+int idmascota FK
+varchar nombre_vacuna
+varchar lote
+date fecha_aplicacion
+date proxima_dosis
+    }
+    veterinario {
+int idveterinario PK
+varchar nombre_veterinario
+varchar especialidad
+varchar telefono
+int idSede FK
+tinyint activo
+    }
+    inventario_sede {
+int id_inventario PK
+int idSede FK
+int idMedicamento FK
+int stock
+date fecha_vencimiento
+    }
+    usuario {
+int idusuario PK
+varchar nombre_usuario
+varchar contraseña
+int idRol FK
+int idveterinario FK
+    }
+    vacunacion {
+int idvacunacion PK
+int idmascota FK
+int idusuario FK
+enum tipo
+varchar nombre_producto
+varchar lote
+date fecha_aplicacion
+date fecha_proximo_refuerzo
+    }
+    auditoria_log {
+int idauditoria PK
+int idusuario FK
+varchar accion
+text detalle
+datetime fecha_hora
+    }
+    cita {
+int idcita PK
+datetime fecha_hora
+varchar motivo
+int idmascota FK
+int idveterinario FK
+int idSede FK
+int idestado_cita FK
+int idusuario FK
+varchar signos_vitales
+    }
+    cita_procedimiento {
+int idcita_procedimiento PK
+decimal precio_cobrado
+int idcita FK
+int idProcedimiento FK
+    }
+    movimiento_inventario {
+int idmovimiento PK
+int idSede FK
+int idMedicamento FK
+enum tipo_movimiento
+int cantidad
+int stock_anterior
+int stock_nuevo
+varchar referencia
+int idusuario FK
+datetime fecha_movimiento
+    }
+    pago {
+int idpago PK
+int idcita FK
+int idusuario FK
+decimal monto_total
+varchar metodo_pago
+enum estado_pago
+varchar referencia_pasarela
+datetime fecha_pago
+varchar referencia_externa
+    }
+    signos_vitales {
+int idsignos PK
+int idcita FK
+decimal peso_kg
+decimal temperatura_c
+int frecuencia_cardiaca
+varchar observaciones
+datetime fecha_registro
+    }
+    tratamiento {
+int idtratamiento PK
+int idcita FK
+varchar diagnostico
+text indicaciones
+text seguimiento
+int idusuario FK
+    }
+    tratamiento_medicamento {
+int idtratamiento_medicamento PK
+int cantidad
+varchar dosis
+varchar frecuencia
+int duracion_dias
+int idtratamiento FK
+int idMedicamento FK
+    }
+    entrega_medicamento {
+int id_entrega PK
+int idtratamiento_medicamento FK
+int cantidad_entregada
+decimal precio_unitario
+datetime fecha_entrega
+enum estado_entrega
+datetime fecha_anulacion
+int idusuario FK
+    }
+    cita ||--o{ cita_procedimiento : idcita
+    cita ||--o{ pago : idcita
+    cita ||--o{ signos_vitales : idcita
+    cita ||--o{ tratamiento : idcita
+    dueño ||--o{ mascota : id_dueño
+    estado_cita ||--o{ cita : idestado_cita
+    mascota ||--o{ cita : idmascota
+    mascota ||--o{ vacuna : idmascota
+    mascota ||--o{ vacunacion : idmascota
+    medicamento ||--o{ inventario_sede : idMedicamento
+    medicamento ||--o{ movimiento_inventario : idMedicamento
+    medicamento ||--o{ tratamiento_medicamento : idMedicamento
+    procedimiento ||--o{ cita_procedimiento : idProcedimiento
+    rol ||--o{ usuario : idRol
+    sede ||--o{ cita : idSede
+    sede ||--o{ inventario_sede : idSede
+    sede ||--o{ movimiento_inventario : idSede
+    sede ||--o{ veterinario : idSede
+    tratamiento ||--o{ tratamiento_medicamento : idtratamiento
+    tratamiento_medicamento ||--o{ entrega_medicamento : idtratamiento_medicamento
+    usuario ||--o{ auditoria_log : idusuario
+    usuario ||--o{ cita : idusuario
+    usuario ||--o{ entrega_medicamento : idusuario
+    usuario ||--o{ movimiento_inventario : idusuario
+    usuario ||--o{ pago : idusuario
+    usuario ||--o{ tratamiento : idusuario
+    usuario ||--o{ vacunacion : idusuario
+    veterinario ||--o{ cita : idveterinario
+    veterinario ||--o{ usuario : idveterinario

@@ -1,0 +1,273 @@
+from datetime import date, datetime, timedelta
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+import mysql.connector
+from db import get_db_connection
+from validadores import (
+    ROL_VETERINARIO, ROL_ADMIN, ROL_SUPERADMIN, UNIDADES_DOSIS,
+    validar_fecha_no_futura, validar_transicion_estado,
+    validar_receta_medica, cita_saldada, registrar_auditoria
+)
+
+veterinario_bp = Blueprint("veterinario", __name__, url_prefix="/veterinario")
+
+
+def redirigir_vet(tab_defecto="tab-citas-vet", **kwargs):
+    tab = (request.form.get("tab") or request.args.get("tab") or tab_defecto).strip()
+    if not tab.startswith("tab-"):
+        tab = f"tab-{tab}"
+    return redirect(url_for("veterinario.panel", tab=tab, **kwargs))
+
+
+def _resolver_veterinario(cursor, id_usuario, id_vet_sesion, id_vet_query=None):
+    rol = session.get("idRol")
+    if rol == ROL_VETERINARIO:
+        cursor.execute(
+            """
+            SELECT v.idveterinario, v.nombre_veterinario, v.especialidad, v.idSede, s.nombre_sede,
+                   COALESCE(v.activo, 1) AS activo
+            FROM veterinario v
+            JOIN sede s ON v.idSede = s.idSede
+            JOIN usuario u ON u.idveterinario = v.idveterinario
+            WHERE u.idusuario = %s
+            """,
+            (id_usuario,),
+        )
+        vet = cursor.fetchone()
+        if vet and int(vet["activo"]) == 1:
+            return vet["idveterinario"], vet
+        return None, None
+
+    if rol in (ROL_ADMIN, ROL_SUPERADMIN):
+        if id_vet_query:
+            cursor.execute(
+                """
+                SELECT v.idveterinario, v.nombre_veterinario, v.especialidad, v.idSede, s.nombre_sede,
+                       COALESCE(v.activo, 1) AS activo
+                FROM veterinario v JOIN sede s ON v.idSede = s.idSede
+                WHERE v.idveterinario = %s
+                """,
+                (id_vet_query,),
+            )
+            vet = cursor.fetchone()
+            if vet:
+                return vet["idveterinario"], vet
+        cursor.execute(
+            """
+            SELECT v.idveterinario, v.nombre_veterinario, v.especialidad, v.idSede, s.nombre_sede,
+                   COALESCE(v.activo, 1) AS activo
+            FROM veterinario v JOIN sede s ON v.idSede = s.idSede
+            ORDER BY v.idveterinario ASC LIMIT 1
+            """
+        )
+        vet = cursor.fetchone()
+        return (vet["idveterinario"], vet) if vet else (None, None)
+
+    return id_vet_sesion, None
+
+
+@veterinario_bp.route("/")
+def panel():
+    rol = session.get("idRol")
+    if rol not in (ROL_VETERINARIO, ROL_ADMIN, ROL_SUPERADMIN):
+        return redirect(url_for("panel"))
+
+    hoy = date.today().isoformat()
+    id_vet_query = request.args.get("idveterinario", type=int)
+    buscar_mascota = (request.args.get("buscar") or "").strip().lower()
+    mascota_ficha_id = request.args.get("mascota_id", type=int)
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    id_vet, vet_info = _resolver_veterinario(
+        cursor, session.get("idusuario"), session.get("idveterinario"), id_vet_query
+    )
+
+    if rol == ROL_VETERINARIO and not id_vet:
+        cursor.close()
+        conn.close()
+        flash(
+            "Tu cuenta de usuario aún no está vinculada a un perfil de veterinario activo. Solicita a Administración que revise tu asignación.",
+            "warning",
+        )
+        return render_template(
+            "veterinario.html",
+            vet_info=None, todos_veterinarios=[], estados=[], citas=[],
+            tratamientos=[], recetas=[], procedimientos=[], medicamentos=[],
+            vacunas=[], mascotas_ficha=[], ficha_mascota=None,
+            ficha_historial=[], ficha_vacunas=[], ficha_procedimientos=[],
+            ficha_recetas=[], buscar_mascota="", hoy=hoy, unidades_dosis=UNIDADES_DOSIS,
+        )
+
+    cursor.execute("SELECT * FROM veterinario ORDER BY nombre_veterinario")
+    todos_veterinarios = cursor.fetchall()
+
+    cursor.execute("SELECT * FROM estado_cita ORDER BY idestado_cita")
+    estados = cursor.fetchall()
+
+    cursor.execute(
+        """
+        SELECT c.*, m.idmascota, m.nombre_mascota, m.especie, m.raza, sx.descripcion AS sexo, m.peso, m.alergias,
+               d.nombre_dueño, d.documento_dueño, d.telefono_dueño,
+               e.nombre_estado, s.nombre_sede
+        FROM cita c
+        JOIN mascota m ON c.idmascota = m.idmascota
+        LEFT JOIN sexo sx ON m.idsexo = sx.idsexo
+        JOIN dueño d ON m.id_dueño = d.id_dueño
+        JOIN estado_cita e ON c.idestado_cita = e.idestado_cita
+        JOIN sede s ON c.idSede = s.idSede
+        WHERE c.idveterinario = %s
+        ORDER BY c.fecha_hora DESC
+        """,
+        (id_vet,),
+    )
+    citas = cursor.fetchall()
+    for c in citas:
+        c["esta_saldada"] = cita_saldada(cursor, c["idcita"])
+
+    if buscar_mascota:
+        citas = [
+            c for c in citas
+            if buscar_mascota in (c["nombre_mascota"] or "").lower()
+            or buscar_mascota in (c["nombre_dueño"] or "").lower()
+            or buscar_mascota in (c["documento_dueño"] or "").lower()
+            or buscar_mascota in (c["especie"] or "").lower()
+        ]
+
+    cursor.execute(
+        """
+        SELECT t.*, c.fecha_hora, m.nombre_mascota, d.nombre_dueño
+        FROM tratamiento t
+        JOIN cita c ON t.idcita = c.idcita
+        JOIN mascota m ON c.idmascota = m.idmascota
+        JOIN dueño d ON m.id_dueño = d.id_dueño
+        WHERE c.idveterinario = %s
+        ORDER BY t.idtratamiento DESC
+        """,
+        (id_vet,),
+    )
+    tratamientos = cursor.fetchall()
+    for t in tratamientos:
+        t["cita_saldada"] = cita_saldada(cursor, t["idcita"])
+
+    cursor.execute(
+        """
+        SELECT tm.*, tm.cantidad AS cantidad_prescrita, m.nombre_Medicamento, ma.nombre_mascota, t.idcita
+        FROM tratamiento_medicamento tm
+        JOIN medicamento m ON tm.idMedicamento = m.idMedicamento
+        JOIN tratamiento t ON tm.idtratamiento = t.idtratamiento
+        JOIN cita c ON t.idcita = c.idcita
+        JOIN mascota ma ON c.idmascota = ma.idmascota
+        WHERE c.idveterinario = %s
+        ORDER BY tm.idtratamiento_medicamento DESC
+        """,
+        (id_vet,),
+    )
+    recetas = cursor.fetchall()
+    for r in recetas:
+        r["cita_saldada"] = cita_saldada(cursor, r["idcita"])
+
+    cursor.execute("SELECT * FROM procedimiento WHERE COALESCE(activo, 1) = 1 ORDER BY nombre_Procedimiento")
+    procedimientos = cursor.fetchall()
+
+    cursor.execute("SELECT * FROM medicamento WHERE COALESCE(activo, 1) = 1 ORDER BY nombre_Medicamento")
+    medicamentos = cursor.fetchall()
+
+    cursor.execute(
+        """
+        SELECT v.*, m.nombre_mascota, d.nombre_dueño
+        FROM vacuna v
+        JOIN mascota m ON v.idmascota = m.idmascota
+        JOIN dueño d ON m.id_dueño = d.id_dueño
+        ORDER BY v.fecha_aplicacion DESC, v.idvacuna DESC
+        """
+    )
+    vacunas = cursor.fetchall()
+
+    cursor.execute(
+        """
+        SELECT m.idmascota, m.nombre_mascota, m.especie, m.raza, m.peso, m.alergias, d.nombre_dueño
+        FROM mascota m JOIN dueño d ON m.id_dueño = d.id_dueño
+        ORDER BY m.nombre_mascota ASC
+        """
+    )
+    mascotas_ficha = cursor.fetchall()
+
+    ficha_mascota = None
+    ficha_historial = []
+    ficha_vacunas = []
+    ficha_procedimientos = []
+    ficha_recetas = []
+
+    target_mascota_id = mascota_ficha_id or (citas[0]["idmascota"] if citas else (mascotas_ficha[0]["idmascota"] if mascotas_ficha else None))
+    if target_mascota_id:
+        cursor.execute(
+            """
+            SELECT m.*, sx.descripcion AS sexo, d.nombre_dueño, d.telefono_dueño, d.documento_dueño
+            FROM mascota m
+            LEFT JOIN sexo sx ON m.idsexo = sx.idsexo
+            JOIN dueño d ON m.id_dueño = d.id_dueño
+            WHERE m.idmascota = %s
+            """,
+            (target_mascota_id,),
+        )
+        ficha_mascota = cursor.fetchone()
+
+        cursor.execute(
+            """
+            SELECT c.idcita, c.fecha_hora, c.motivo, c.signos_vitales, e.nombre_estado, s.nombre_sede,
+                   t.diagnostico, t.indicaciones
+            FROM cita c
+            JOIN estado_cita e ON c.idestado_cita = e.idestado_cita
+            JOIN sede s ON c.idSede = s.idSede
+            LEFT JOIN tratamiento t ON t.idcita = c.idcita
+            WHERE c.idmascota = %s
+            ORDER BY c.fecha_hora DESC
+            """,
+            (target_mascota_id,),
+        )
+        ficha_historial = cursor.fetchall()
+
+        cursor.execute("SELECT * FROM vacuna WHERE idmascota = %s ORDER BY fecha_aplicacion DESC", (target_mascota_id,))
+        ficha_vacunas = cursor.fetchall()
+
+        cursor.execute(
+            """
+            SELECT cp.*, pr.nombre_Procedimiento, c.fecha_hora
+            FROM cita_procedimiento cp
+            JOIN procedimiento pr ON cp.idProcedimiento = pr.idProcedimiento
+            JOIN cita c ON cp.idcita = c.idcita
+            WHERE c.idmascota = %s
+            ORDER BY c.fecha_hora DESC
+            """,
+            (target_mascota_id,),
+        )
+        ficha_procedimientos = cursor.fetchall()
+
+        cursor.execute(
+            """
+            SELECT tm.*, tm.cantidad AS cantidad_prescrita, m.nombre_Medicamento, c.fecha_hora
+            FROM tratamiento_medicamento tm
+            JOIN medicamento m ON tm.idMedicamento = m.idMedicamento
+            JOIN tratamiento t ON tm.idtratamiento = t.idtratamiento
+            JOIN cita c ON t.idcita = c.idcita
+            WHERE c.idmascota = %s
+            ORDER BY c.fecha_hora DESC
+            """,
+            (target_mascota_id,),
+        )
+        ficha_recetas = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "veterinario.html",
+        vet_info=vet_info, todos_veterinarios=todos_veterinarios, estados=estados,
+        citas=citas, tratamientos=tratamientos, recetas=recetas,
+        procedimientos=procedimientos, medicamentos=medicamentos, vacunas=vacunas,
+        mascotas_ficha=mascotas_ficha, ficha_mascota=ficha_mascota,
+        ficha_historial=ficha_historial, ficha_vacunas=ficha_vacunas,
+        ficha_procedimientos=ficha_procedimientos, ficha_recetas=ficha_recetas,
+        buscar_mascota=buscar_mascota, hoy=hoy, unidades_dosis=UNIDADES_DOSIS,
+    )

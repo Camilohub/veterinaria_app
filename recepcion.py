@@ -1,16 +1,24 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 import mysql.connector
 from db import get_db_connection
 from validadores import (
     ROL_RECEPCION, ESTADOS_CERRADOS, ESPECIES_COMUNES,
-    validar_especie, validar_cc_colombia, validar_telefono_colombia,
-    validar_correo, validar_fecha_no_futura, validar_fecha_hora_futura,
+    validar_especie, validar_nombre_persona, validar_cc,
+    validar_telefono_co, validar_email_estricto, construir_direccion_co,
+    validar_fecha_no_futura, validar_fecha_hora_futura,
     validar_transicion_estado, calcular_balance_cita, cita_saldada,
     url_whatsapp, registrar_auditoria
 )
 
 recepcion_bp = Blueprint("recepcion", __name__, url_prefix="/recepcion")
+
+
+def redirigir_recepcion(tab_defecto="tab-agenda", **kwargs):
+    tab = (request.form.get("tab") or request.args.get("tab") or tab_defecto).strip()
+    if not tab.startswith("tab-"):
+        tab = f"tab-{tab}"
+    return redirect(url_for("recepcion.panel", tab=tab, **kwargs))
 
 
 @recepcion_bp.route("/")
@@ -32,10 +40,15 @@ def panel():
     cursor.execute("SELECT * FROM dueño ORDER BY id_dueño DESC")
     duenos = cursor.fetchall()
 
+    cursor.execute("SELECT * FROM sexo ORDER BY idsexo")
+    sexos = cursor.fetchall()
+
     cursor.execute(
         """
-        SELECT m.*, d.nombre_dueño, d.documento_dueño
-        FROM mascota m JOIN dueño d ON m.id_dueño = d.id_dueño
+        SELECT m.*, sx.descripcion AS sexo, d.nombre_dueño, d.documento_dueño
+        FROM mascota m
+        LEFT JOIN sexo sx ON m.idsexo = sx.idsexo
+        JOIN dueño d ON m.id_dueño = d.id_dueño
         ORDER BY m.idmascota DESC
         """
     )
@@ -138,7 +151,8 @@ def panel():
     params_rec = (sede_id,) if sede_id else ()
     cursor.execute(
         f"""
-        SELECT tm.*, tm.cantidad AS cantidad_prescrita, m.nombre_Medicamento, ma.nombre_mascota, s.nombre_sede,
+        SELECT tm.*, tm.cantidad AS cantidad_prescrita, m.nombre_Medicamento, ma.nombre_mascota,
+               s.nombre_sede, c.idcita, c.idestado_cita,
                COALESCE(inv.stock, 0) AS stock_sede, inv.fecha_vencimiento,
                DATEDIFF(inv.fecha_vencimiento, CURDATE()) AS dias_vence,
                COALESCE((
@@ -163,8 +177,16 @@ def panel():
     for r in recetas:
         vencido = r["dias_vence"] is not None and r["dias_vence"] < 0
         sin_stock = (r["stock_sede"] or 0) <= 0
-        r["bloqueada_entrega"] = vencido or sin_stock
-        r["motivo_bloqueo"] = "Vencido" if vencido else ("Sin stock" if sin_stock else "")
+        cancelada = r.get("idestado_cita") in (9, 10)
+        agotada = int(r["entregado"] or 0) >= int(r["cantidad_prescrita"] or 0)
+        r["bloqueada_entrega"] = vencido or sin_stock or cancelada or agotada
+        r["motivo_bloqueo"] = (
+            "Cita cancelada" if cancelada else (
+                "Completada" if agotada else (
+                    "Vencido" if vencido else ("Sin stock" if sin_stock else "")
+                )
+            )
+        )
 
     cursor.execute(
         """
@@ -255,7 +277,7 @@ def panel():
 
     return render_template(
         "recepcion.html",
-        duenos=duenos, mascotas=mascotas, veterinarios=veterinarios, sedes=sedes,
+        duenos=duenos, mascotas=mascotas, sexos=sexos, veterinarios=veterinarios, sedes=sedes,
         estados=estados, citas=citas, tratamientos=tratamientos, recetas=recetas,
         entregas=entregas, pagos=pagos, especies=ESPECIES_COMUNES,
         pendientes_cobro=pendientes_cobro, ingresos_dia=ingresos_dia, hoy=hoy,
@@ -269,18 +291,48 @@ def panel():
 def crear_dueno():
     if session.get("idRol") != ROL_RECEPCION:
         return redirect(url_for("panel"))
-    cc = request.form.get("documento_dueño", "").strip()
-    tel = request.form.get("telefono_dueño", "").strip()
-    email = (request.form.get("email_dueño") or "").strip() or None
-    if not validar_cc_colombia(cc) or not validar_telefono_colombia(tel) or not validar_correo(email):
-        flash("Verifica cédula colombiana (6-10 dígitos), teléfono celular (10 dígitos iniciando en 3) y correo válido.", "danger")
-        return redirect(url_for("recepcion.panel"))
+    ok_nom, res_nom = validar_nombre_persona(request.form.get("nombre_dueño"), "El nombre del propietario")
+    if not ok_nom:
+        flash(res_nom, "danger")
+        return redirigir_recepcion("tab-clientes")
+    ok_cc, res_cc = validar_cc(request.form.get("documento_dueño"))
+    if not ok_cc:
+        flash(res_cc, "danger")
+        return redirigir_recepcion("tab-clientes")
+    ok_tel, res_tel = validar_telefono_co(request.form.get("telefono_dueño"))
+    if not ok_tel:
+        flash(res_tel, "danger")
+        return redirigir_recepcion("tab-clientes")
+    email_raw = (request.form.get("email_dueño") or "").strip()
+    email_final = None
+    if email_raw:
+        ok_em, res_em = validar_email_estricto(email_raw)
+        if not ok_em:
+            flash(res_em, "danger")
+            return redirigir_recepcion("tab-clientes")
+        email_final = res_em
+    ok_dir, res_dir = construir_direccion_co(
+        request.form.get("via_tipo"),
+        request.form.get("via_num"),
+        request.form.get("via_letra"),
+        request.form.get("num_sec"),
+        request.form.get("sec_letra"),
+        request.form.get("placa"),
+        request.form.get("complemento"),
+    )
+    if not ok_dir:
+        flash(res_dir, "danger")
+        return redirigir_recepcion("tab-clientes")
+
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "INSERT INTO dueño (nombre_dueño, documento_dueño, telefono_dueño, email_dueño) VALUES (%s, %s, %s, %s)",
-            (request.form["nombre_dueño"].strip(), cc, tel, email),
+            """
+            INSERT INTO dueño (nombre_dueño, documento_dueño, telefono_dueño, email_dueño, direccion_dueño)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (res_nom, res_cc, res_tel, email_final, res_dir),
         )
         conn.commit()
         flash("Propietario registrado correctamente.", "success")
@@ -290,35 +342,44 @@ def crear_dueno():
     finally:
         cursor.close()
         conn.close()
-    return redirect(url_for("recepcion.panel"))
+    return redirigir_recepcion("tab-clientes")
 
 
 @recepcion_bp.route("/dueno/editar/<int:id_dueno>", methods=["POST"])
 def editar_dueno(id_dueno):
     if session.get("idRol") != ROL_RECEPCION:
         return redirect(url_for("panel"))
-    cc = request.form.get("documento_dueño", "").strip()
-    tel = request.form.get("telefono_dueño", "").strip()
-    email = (request.form.get("email_dueño") or "").strip() or None
-    if cc and not validar_cc_colombia(cc):
-        flash("Cédula colombiana inválida (6-10 dígitos).", "danger")
-        return redirect(url_for("recepcion.panel"))
-    if not validar_telefono_colombia(tel) or not validar_correo(email):
-        flash("Teléfono colombiano (10 dígitos iniciando en 3) o correo inválido.", "danger")
-        return redirect(url_for("recepcion.panel"))
+    cc_raw = (request.form.get("documento_dueño") or "").strip()
+    cc_final = None
+    if cc_raw:
+        ok_cc, res_cc = validar_cc(cc_raw)
+        if not ok_cc:
+            flash(res_cc, "danger")
+            return redirigir_recepcion("tab-clientes")
+        cc_final = res_cc
+    ok_tel, res_tel = validar_telefono_co(request.form.get("telefono_dueño"))
+    if not ok_tel:
+        flash(res_tel, "danger")
+        return redirigir_recepcion("tab-clientes")
+    email_raw = (request.form.get("email_dueño") or "").strip()
+    email_final = None
+    if email_raw:
+        ok_em, res_em = validar_email_estricto(email_raw)
+        if not ok_em:
+            flash(res_em, "danger")
+            return redirigir_recepcion("tab-clientes")
+        email_final = res_em
+
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        if cc:
-            cursor.execute(
-                "UPDATE dueño SET documento_dueño = %s, telefono_dueño = %s, email_dueño = %s WHERE id_dueño = %s",
-                (cc, tel, email, id_dueno),
-            )
-        else:
-            cursor.execute(
-                "UPDATE dueño SET telefono_dueño = %s, email_dueño = %s WHERE id_dueño = %s",
-                (tel, email, id_dueno),
-            )
+        campos = ["telefono_dueño = %s", "email_dueño = %s"]
+        vals = [res_tel, email_final]
+        if cc_final:
+            campos.append("documento_dueño = %s")
+            vals.append(cc_final)
+        vals.append(id_dueno)
+        cursor.execute(f"UPDATE dueño SET {', '.join(campos)} WHERE id_dueño = %s", tuple(vals))
         conn.commit()
         flash("Datos del propietario actualizados.", "success")
     except mysql.connector.Error as err:
@@ -327,7 +388,7 @@ def editar_dueno(id_dueno):
     finally:
         cursor.close()
         conn.close()
-    return redirect(url_for("recepcion.panel"))
+    return redirigir_recepcion("tab-clientes")
 
 
 @recepcion_bp.route("/mascota", methods=["POST"])
@@ -336,15 +397,33 @@ def crear_mascota():
         return redirect(url_for("panel"))
     especie = request.form.get("especie", "").strip()
     fecha_nac = request.form.get("fecha_Nacimiento") or None
+    idsexo = request.form.get("idsexo", type=int)
+    peso_raw = request.form.get("peso")
     if not validar_especie(especie) or not validar_fecha_no_futura(fecha_nac):
         flash("Verifica que la especie sea válida y la fecha de nacimiento no sea futura.", "danger")
-        return redirect(url_for("recepcion.panel"))
+        return redirigir_recepcion("tab-clientes")
+    if fecha_nac and date.fromisoformat(fecha_nac[:10]) < date.today() - timedelta(days=365 * 35):
+        flash("La fecha de nacimiento de la mascota no puede superar los 35 años.", "warning")
+        return redirigir_recepcion("tab-clientes")
+    if not idsexo:
+        flash("Selecciona el sexo de la mascota.", "warning")
+        return redirigir_recepcion("tab-clientes")
+    peso_val = None
+    if peso_raw:
+        try:
+            peso_val = float(peso_raw)
+        except ValueError:
+            peso_val = -1
+        if not (0.1 <= peso_val <= 120):
+            flash("El peso de la mascota debe estar entre 0.1 y 120 kg.", "warning")
+            return redirigir_recepcion("tab-clientes")
+
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
         cursor.execute(
             """
-            INSERT INTO mascota (nombre_mascota, especie, raza, fecha_Nacimiento, id_dueño, sexo, peso, alergias)
+            INSERT INTO mascota (nombre_mascota, especie, raza, fecha_Nacimiento, id_dueño, idsexo, peso, alergias)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
@@ -353,8 +432,8 @@ def crear_mascota():
                 (request.form.get("raza") or "").strip() or None,
                 fecha_nac,
                 request.form["id_dueño"],
-                request.form["sexo"],
-                request.form.get("peso") or None,
+                idsexo,
+                peso_val,
                 (request.form.get("alergias") or "").strip() or None,
             ),
         )
@@ -366,17 +445,24 @@ def crear_mascota():
     finally:
         cursor.close()
         conn.close()
-    return redirect(url_for("recepcion.panel"))
+    return redirigir_recepcion("tab-clientes")
 
 
 @recepcion_bp.route("/mascota/peso/<int:idmascota>", methods=["POST"])
 def editar_peso_mascota(idmascota):
     if session.get("idRol") != ROL_RECEPCION:
         return redirect(url_for("panel"))
+    try:
+        peso_val = float(request.form.get("peso") or 0)
+    except ValueError:
+        peso_val = -1
+    if not (0.1 <= peso_val <= 120):
+        flash("El peso debe estar entre 0.1 y 120 kg.", "warning")
+        return redirigir_recepcion("tab-clientes")
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("UPDATE mascota SET peso = %s WHERE idmascota = %s", (request.form["peso"], idmascota))
+        cursor.execute("UPDATE mascota SET peso = %s WHERE idmascota = %s", (peso_val, idmascota))
         conn.commit()
         flash("Peso actualizado.", "success")
     except mysql.connector.Error as err:
@@ -385,7 +471,7 @@ def editar_peso_mascota(idmascota):
     finally:
         cursor.close()
         conn.close()
-    return redirect(url_for("recepcion.panel"))
+    return redirigir_recepcion("tab-clientes")
 
 
 @recepcion_bp.route("/cita", methods=["POST"])
@@ -395,10 +481,15 @@ def crear_cita():
     fecha_hora = request.form["fecha_hora"].replace("T", " ") + ":00"
     if not validar_fecha_hora_futura(fecha_hora):
         flash("No puedes agendar citas en fechas u horas pasadas.", "danger")
-        return redirect(url_for("recepcion.panel"))
+        return redirigir_recepcion("tab-agenda")
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
     try:
+        cursor.execute("SELECT estado_paciente FROM mascota WHERE idmascota = %s", (request.form["idmascota"],))
+        m = cursor.fetchone()
+        if m and m.get("estado_paciente") == "Fallecido":
+            flash("No se pueden agendar citas para un paciente fallecido.", "danger")
+            return redirigir_recepcion("tab-agenda")
         cursor.execute(
             """
             INSERT INTO cita (fecha_hora, motivo, idmascota, idveterinario, idSede, idusuario)
@@ -421,7 +512,7 @@ def crear_cita():
     finally:
         cursor.close()
         conn.close()
-    return redirect(url_for("recepcion.panel", fecha=fecha_hora[:10]))
+    return redirigir_recepcion("tab-agenda", fecha=fecha_hora[:10])
 
 
 @recepcion_bp.route("/cita/reprogramar/<int:idcita>", methods=["POST"])
@@ -431,13 +522,13 @@ def reprogramar_cita(idcita):
     fecha_hora = request.form["fecha_hora"].replace("T", " ") + ":00"
     if not validar_fecha_hora_futura(fecha_hora):
         flash("La nueva fecha y hora no puede estar en el pasado.", "danger")
-        return redirect(url_for("recepcion.panel"))
+        return redirigir_recepcion("tab-agenda")
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
         if cita_saldada(cursor, idcita):
             flash("Esta cita ya está saldada y no puede modificarse.", "warning")
-            return redirect(url_for("recepcion.panel"))
+            return redirigir_recepcion("tab-agenda")
         cursor.execute(
             "UPDATE cita SET fecha_hora = %s, idestado_cita = 1 WHERE idcita = %s",
             (fecha_hora, idcita),
@@ -450,7 +541,7 @@ def reprogramar_cita(idcita):
     finally:
         cursor.close()
         conn.close()
-    return redirect(url_for("recepcion.panel", fecha=fecha_hora[:10]))
+    return redirigir_recepcion("tab-agenda", fecha=fecha_hora[:10])
 
 
 @recepcion_bp.route("/cita/estado/<int:idcita>", methods=["POST"])
@@ -463,16 +554,16 @@ def cambiar_estado_cita(idcita):
     try:
         if cita_saldada(cursor, idcita):
             flash("Cita ya saldada; no puede modificarse.", "warning")
-            return redirect(url_for("recepcion.panel"))
-        cursor.execute("SELECT idestado_cita FROM cita WHERE idcita = %s", (idcita,))
+            return redirigir_recepcion("tab-agenda")
+        cursor.execute("SELECT idestado_cita, fecha_hora FROM cita WHERE idcita = %s", (idcita,))
         actual = cursor.fetchone()
         if not actual or not validar_transicion_estado(actual["idestado_cita"], nuevo_estado):
             flash("Transición de estado no permitida para esta cita.", "danger")
-            return redirect(request.referrer or url_for("recepcion.panel"))
-        cursor.execute(
-            "UPDATE cita SET idestado_cita = %s WHERE idcita = %s",
-            (nuevo_estado, idcita),
-        )
+            return redirigir_recepcion("tab-agenda")
+        if nuevo_estado in (8, 10) and actual["fecha_hora"] > datetime.now():
+            flash("No puedes marcar como Completada o No asistió una cita futura.", "warning")
+            return redirigir_recepcion("tab-agenda")
+        cursor.execute("UPDATE cita SET idestado_cita = %s WHERE idcita = %s", (nuevo_estado, idcita))
         conn.commit()
         flash("Estado actualizado.", "success")
     except mysql.connector.Error as err:
@@ -481,7 +572,7 @@ def cambiar_estado_cita(idcita):
     finally:
         cursor.close()
         conn.close()
-    return redirect(request.referrer or url_for("recepcion.panel"))
+    return redirigir_recepcion("tab-agenda")
 
 
 @recepcion_bp.route("/entrega", methods=["POST"])
@@ -496,10 +587,13 @@ def registrar_entrega():
     try:
         cursor.execute(
             """
-            SELECT t.idcita, c.idSede, tm.idMedicamento,
+            SELECT t.idcita, c.idSede, c.idestado_cita, tm.idMedicamento, tm.cantidad AS prescrita,
                    COALESCE(inv.stock, 0) AS stock_sede,
-                   inv.fecha_vencimiento,
-                   DATEDIFF(inv.fecha_vencimiento, CURDATE()) AS dias_vence
+                   DATEDIFF(inv.fecha_vencimiento, CURDATE()) AS dias_vence,
+                   COALESCE((
+                       SELECT SUM(em.cantidad_entregada) FROM entrega_medicamento em
+                       WHERE em.idtratamiento_medicamento = tm.idtratamiento_medicamento AND em.estado_entrega = 'Entregada'
+                   ), 0) AS ya_entregado
             FROM tratamiento_medicamento tm
             JOIN tratamiento t ON tm.idtratamiento = t.idtratamiento
             JOIN cita c ON t.idcita = c.idcita
@@ -511,16 +605,23 @@ def registrar_entrega():
         row = cursor.fetchone()
         if not row:
             flash("Receta no encontrada.", "warning")
-            return redirect(url_for("recepcion.panel"))
+            return redirigir_recepcion("tab-farmacia")
+        if row["idestado_cita"] in (9, 10):
+            flash("No se pueden despachar medicamentos para una cita cancelada o sin asistencia.", "danger")
+            return redirigir_recepcion("tab-farmacia")
         if cita_saldada(cursor, row["idcita"]):
             flash("Cita ya saldada; no se pueden entregar medicamentos.", "warning")
-            return redirect(url_for("recepcion.panel"))
+            return redirigir_recepcion("tab-farmacia")
         if row["dias_vence"] is not None and row["dias_vence"] < 0:
             flash("No es posible entregar este medicamento porque el lote está vencido.", "danger")
-            return redirect(url_for("recepcion.panel"))
-        if cant <= 0 or (row["stock_sede"] or 0) < cant:
+            return redirigir_recepcion("tab-farmacia")
+        pendiente = int(row["prescrita"]) - int(row["ya_entregado"])
+        if cant <= 0 or cant > pendiente:
+            flash(f"Cantidad inválida: solo quedan {pendiente} unidad(es) pendientes de esta receta.", "warning")
+            return redirigir_recepcion("tab-farmacia")
+        if (row["stock_sede"] or 0) < cant:
             flash("Stock insuficiente en la sede para realizar la entrega.", "danger")
-            return redirect(url_for("recepcion.panel"))
+            return redirigir_recepcion("tab-farmacia")
 
         cursor.execute(
             """
@@ -537,7 +638,7 @@ def registrar_entrega():
     finally:
         cursor.close()
         conn.close()
-    return redirect(url_for("recepcion.panel"))
+    return redirigir_recepcion("tab-farmacia")
 
 
 @recepcion_bp.route("/entrega/anular/<int:id_entrega>", methods=["POST"])
@@ -559,14 +660,9 @@ def anular_entrega(id_entrega):
         row = cursor.fetchone()
         if row and cita_saldada(cursor, row["idcita"]):
             flash("Cita ya saldada; no se puede anular la entrega.", "warning")
-            return redirect(url_for("recepcion.panel"))
-        cursor.execute(
-            "UPDATE entrega_medicamento SET estado_entrega = 'Anulada' WHERE id_entrega = %s",
-            (id_entrega,),
-        )
-        registrar_auditoria(
-            cursor, session["idusuario"], "ANULAR_ENTREGA", f"Anuló entrega de farmacia #{id_entrega}"
-        )
+            return redirigir_recepcion("tab-farmacia")
+        cursor.execute("UPDATE entrega_medicamento SET estado_entrega = 'Anulada' WHERE id_entrega = %s", (id_entrega,))
+        registrar_auditoria(cursor, session["idusuario"], "ANULAR_ENTREGA", f"Anuló entrega de farmacia #{id_entrega}")
         conn.commit()
         flash("Entrega anulada y registrada en auditoría.", "warning")
     except mysql.connector.Error as err:
@@ -575,4 +671,4 @@ def anular_entrega(id_entrega):
     finally:
         cursor.close()
         conn.close()
-    return redirect(url_for("recepcion.panel"))
+    return redirigir_recepcion("tab-farmacia")

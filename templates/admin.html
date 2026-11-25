@@ -9,10 +9,13 @@
   </div>
 </div>
 
-<ul class="nav nav-tabs mb-3" role="tablist">
-  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-personal" type="button">Personal y Usuarios</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-inventario" type="button">Inventario y Catálogos</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-sedes" type="button">Sedes y Auditoría</button></li>
+<ul class="nav nav-tabs mb-3" id="adminTabs" role="tablist">
+  <li class="nav-item"><button class="nav-link active" id="btn-tab-personal" data-bs-toggle="tab" data-bs-target="#tab-personal" type="button">Personal y Usuarios</button></li>
+  <li class="nav-item"><button class="nav-link" id="btn-tab-inventario" data-bs-toggle="tab" data-bs-target="#tab-inventario" type="button">Inventario y Catálogos</button></li>
+  <li class="nav-item"><button class="nav-link" id="btn-tab-sedes" data-bs-toggle="tab" data-bs-target="#tab-sedes" type="button">Sedes y Auditoría</button></li>
+  {% if session.get('idRol') == 4 %}
+  <li class="nav-item"><button class="nav-link fw-semibold" id="btn-tab-consola" data-bs-toggle="tab" data-bs-target="#tab-consola" type="button">Consola SQL</button></li>
+  {% endif %}
 </ul>
 
 <div class="tab-content">
@@ -24,9 +27,10 @@
           <div class="card-body">
             <form method="POST" action="{{ url_for('admin_crear_veterinario') }}" class="row g-2">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <div class="col-md-6"><input type="text" name="nombre_veterinario" placeholder="Nombre completo" class="form-control form-control-sm" required></div>
-              <div class="col-md-6"><input type="text" name="especialidad" placeholder="Especialidad" class="form-control form-control-sm" required></div>
-              <div class="col-md-12">
+              <div class="col-md-6"><input type="text" name="nombre_veterinario" placeholder="Nombre y apellido real" class="form-control form-control-sm" required></div>
+              <div class="col-md-6"><input type="text" name="especialidad" placeholder="Especialidad (ej. Cirugía)" class="form-control form-control-sm" required></div>
+              <div class="col-md-6"><input type="tel" name="telefono" placeholder="Celular (3XXXXXXXXX)" maxlength="10" pattern="3[0-9]{9}" class="form-control form-control-sm" required></div>
+              <div class="col-md-6">
                 <select name="idSede" class="form-select form-select-sm" required>
                   <option value="">Selecciona sede...</option>
                   {% for s in sedes %}<option value="{{ s.idSede }}">{{ s.nombre_sede }}</option>{% endfor %}
@@ -49,8 +53,8 @@
           <div class="card-body">
             <form method="POST" action="{{ url_for('admin_crear_usuario') }}" class="row g-2">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <div class="col-md-6"><input type="text" name="nombre_usuario" placeholder="Nombre de usuario" class="form-control form-control-sm" required></div>
-              <div class="col-md-6"><input type="password" name="contraseña" placeholder="Contraseña" class="form-control form-control-sm" required></div>
+              <div class="col-md-6"><input type="text" name="nombre_usuario" placeholder="Nombre de usuario (mín. 4)" minlength="4" maxlength="35" class="form-control form-control-sm" required></div>
+              <div class="col-md-6"><input type="password" name="contraseña" placeholder="Contraseña (mín. 4)" minlength="4" class="form-control form-control-sm" required></div>
               <div class="col-12">
                 <select name="idRol" class="form-select form-select-sm" required>
                   {% for r in roles if r.idRol != 3 %}<option value="{{ r.idRol }}">{{ r.nombre_rol }}</option>{% endfor %}
@@ -62,15 +66,16 @@
         </div>
       </div>
     </div>
+
     <div class="card shadow-sm mb-3">
       <div class="card-header">Equipo Veterinario</div>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-          <thead><tr><th>ID</th><th>Nombre</th><th>Especialidad</th><th>Sede</th><th>Estado</th><th>Acción</th></tr></thead>
+          <thead><tr><th>ID</th><th>Nombre</th><th>Especialidad</th><th>Teléfono</th><th>Sede</th><th>Estado</th><th>Acción</th></tr></thead>
           <tbody>
             {% for v in veterinarios %}
             <tr>
-              <td>{{ v.idveterinario }}</td><td>{{ v.nombre_veterinario }}</td><td>{{ v.especialidad }}</td><td>{{ v.nombre_sede }}</td>
+              <td>{{ v.idveterinario }}</td><td>{{ v.nombre_veterinario }}</td><td>{{ v.especialidad }}</td><td>{{ v.telefono or '-' }}</td><td>{{ v.nombre_sede }}</td>
               <td><span class="badge bg-{{ 'success' if v.activo != 0 else 'secondary' }}">{{ 'Activo' if v.activo != 0 else 'Inactivo' }}</span></td>
               <td class="d-flex gap-1">
                 <form method="POST" action="{{ url_for('admin_toggle_veterinario', idveterinario=v.idveterinario) }}">
@@ -131,6 +136,7 @@
       </div>
     </div>
   </div>
+
   <div class="tab-pane fade" id="tab-inventario">
     <div class="row g-3 mb-3">
       <div class="col-md-4">
@@ -145,8 +151,11 @@
               <select name="idMedicamento" class="form-select form-select-sm" required>
                 {% for m in medicamentos %}<option value="{{ m.idMedicamento }}">{{ m.nombre_Medicamento }}</option>{% endfor %}
               </select>
-              <input type="number" name="cantidad" min="1" placeholder="Cantidad" class="form-control form-control-sm" required>
-              <input type="date" name="fecha_vencimiento" class="form-control form-control-sm">
+              <input type="number" name="cantidad" min="1" max="1000" placeholder="Cantidad (1 - 1.000)" class="form-control form-control-sm" required>
+              <div>
+                <label class="form-label small text-muted mb-0">Fecha de vencimiento (mín. 3 días vigencia)</label>
+                <input type="date" name="fecha_vencimiento" min="{{ min_fecha_venc }}" max="{{ max_fecha_venc }}" class="form-control form-control-sm" required>
+              </div>
               <button class="btn btn-vet btn-sm">Agregar Stock</button>
             </form>
           </div>
@@ -159,7 +168,7 @@
             <form method="POST" action="{{ url_for('admin_medicamento') }}" class="vstack gap-2">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="text" name="nombre" placeholder="Nombre medicamento" class="form-control form-control-sm" required>
-              <input type="number" step="0.01" name="precio" placeholder="Precio unitario" class="form-control form-control-sm" required>
+              <input type="number" step="0.01" min="100" max="500000" name="precio" placeholder="Precio ($100 - $500.000)" class="form-control form-control-sm" required>
               <button class="btn btn-vet btn-sm">Guardar Medicamento</button>
             </form>
           </div>
@@ -173,7 +182,7 @@
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="text" name="nombre" placeholder="Nombre procedimiento" class="form-control form-control-sm" required>
               <input type="text" name="descripcion" placeholder="Descripción" class="form-control form-control-sm">
-              <input type="number" step="0.01" name="costo" placeholder="Costo" class="form-control form-control-sm" required>
+              <input type="number" step="0.01" min="1000" max="800000" name="costo" placeholder="Costo ($1.000 - $800.000)" class="form-control form-control-sm" required>
               <button class="btn btn-vet btn-sm">Guardar Procedimiento</button>
             </form>
           </div>
@@ -210,7 +219,7 @@
                 <td>
                   <form method="POST" action="{{ url_for('admin_precio_medicamento', idmed=m.idMedicamento) }}" class="d-flex gap-1">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="number" step="0.01" name="precio" value="{{ m.precio }}" class="form-control form-control-sm" style="width:95px">
+                    <input type="number" step="0.01" min="100" max="500000" name="precio" value="{{ m.precio }}" class="form-control form-control-sm" style="width:95px">
                     <button class="btn btn-outline-primary btn-sm">$</button>
                   </form>
                 </td>
@@ -243,15 +252,21 @@
                 <td>
                   <form method="POST" action="{{ url_for('admin_precio_procedimiento', idproc=pr.idProcedimiento) }}" class="d-flex gap-1">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="number" step="0.01" name="costo" value="{{ pr.costo }}" class="form-control form-control-sm" style="width:95px">
+                    <input type="number" step="0.01" min="1000" max="800000" name="costo" value="{{ pr.costo }}" class="form-control form-control-sm" style="width:95px">
                     <button class="btn btn-outline-primary btn-sm">$</button>
                   </form>
                 </td>
-                <td>
+                <td class="d-flex gap-1">
                   <form method="POST" action="{{ url_for('admin_toggle_procedimiento', idproc=pr.idProcedimiento) }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button class="btn btn-outline-secondary btn-sm">{{ 'Activo' if pr.activo != 0 else 'Inactivo' }}</button>
                   </form>
+                  {% if session.get('idRol') == 4 %}
+                  <form method="POST" action="{{ url_for('admin_eliminar_procedimiento', idproc=pr.idProcedimiento) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-outline-danger btn-sm">Eliminar</button>
+                  </form>
+                  {% endif %}
                 </td>
               </tr>
               {% endfor %}
@@ -264,46 +279,77 @@
 
   <div class="tab-pane fade" id="tab-sedes">
     <div class="row g-3 mb-3">
-      <div class="col-md-5">
+      <div class="col-lg-5">
         <div class="card shadow-sm">
-          <div class="card-header card-header-vet">Nueva Sede</div>
+          <div class="card-header card-header-vet">Nueva Sede (Dirección Estructurada)</div>
           <div class="card-body">
-            <form method="POST" action="{{ url_for('admin_sede') }}" class="vstack gap-2">
+            <form method="POST" action="{{ url_for('admin_sede') }}" class="row g-2">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="text" name="nombre_sede" placeholder="Nombre sede" class="form-control form-control-sm" required>
-              <input type="text" name="direccion_sede" placeholder="Dirección" class="form-control form-control-sm" required>
-              <input type="text" name="ciudad" placeholder="Ciudad (ej. Bogotá)" class="form-control form-control-sm" required>
-              <input type="text" name="telefono_sede" placeholder="Teléfono" class="form-control form-control-sm" required>
-              <button class="btn btn-vet btn-sm">Crear Sede</button>
+              <div class="col-md-6"><input type="text" name="nombre_sede" placeholder="Nombre sede (ej. Sede Norte)" class="form-control form-control-sm" required></div>
+              <div class="col-md-6"><input type="text" name="ciudad" value="Bogotá D.C." class="form-control form-control-sm bg-light fw-semibold" readonly required></div>
+              <div class="col-4">
+                <select name="via_tipo" class="form-select form-select-sm" required>
+                  <option value="Calle">Calle</option>
+                  <option value="Carrera">Carrera</option>
+                  <option value="Transversal">Transversal</option>
+                  <option value="Diagonal">Diagonal</option>
+                  <option value="Avenida">Avenida</option>
+                  <option value="Circular">Circular</option>
+                  <option value="Manzana">Manzana</option>
+                  <option value="Vereda">Vereda</option>
+                </select>
+              </div>
+              <div class="col-4"><input type="number" name="via_num" min="1" max="250" placeholder="N° (1-250)" class="form-control form-control-sm" required></div>
+              <div class="col-4"><input type="text" name="via_letra" maxlength="5" placeholder="Letra/Bis (opc.)" class="form-control form-control-sm"></div>
+              <div class="col-4"><input type="number" name="num_sec" min="1" max="250" placeholder="# N° (1-250)" class="form-control form-control-sm" required></div>
+              <div class="col-4"><input type="text" name="sec_letra" maxlength="1" placeholder="Letra (opc.)" class="form-control form-control-sm"></div>
+              <div class="col-4"><input type="number" name="placa" min="1" max="250" placeholder="- Placa (1-250)" class="form-control form-control-sm" required></div>
+              <div class="col-md-7"><input type="text" name="complemento" maxlength="60" placeholder="Complemento / Barrio (opcional)" class="form-control form-control-sm"></div>
+              <div class="col-md-5"><input type="tel" name="telefono_sede" maxlength="10" placeholder="Celular o fijo (601...)" class="form-control form-control-sm" required></div>
+              <div class="col-12"><button class="btn btn-vet btn-sm w-100">Crear Sede</button></div>
             </form>
           </div>
         </div>
       </div>
-      <div class="col-md-7">
+      <div class="col-lg-7">
         <div class="card shadow-sm">
           <div class="card-header">Sedes Registradas</div>
-          <table class="table table-sm mb-0">
-            <thead><tr><th>ID</th><th>Nombre</th><th>Ciudad</th><th>Dirección</th><th>Teléfono</th></tr></thead>
-            <tbody>
-              {% for s in sedes %}
-              <tr><td>{{ s.idSede }}</td><td>{{ s.nombre_sede }}</td><td>{{ s.ciudad }}</td><td>{{ s.direccion_sede }}</td><td>{{ s.telefono_sede or '-' }}</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>ID</th><th>Nombre</th><th>Ciudad</th><th>Dirección</th><th>Teléfono</th>{% if session.get('idRol') == 4 %}<th>Acción</th>{% endif %}</tr></thead>
+              <tbody>
+                {% for s in sedes %}
+                <tr>
+                  <td>{{ s.idSede }}</td><td>{{ s.nombre_sede }}</td><td>{{ s.ciudad }}</td><td>{{ s.direccion_sede }}</td><td>{{ s.telefono_sede or '-' }}</td>
+                  {% if session.get('idRol') == 4 %}
+                  <td>
+                    <form method="POST" action="{{ url_for('admin_eliminar_sede', idsede=s.idSede) }}" onsubmit="return confirm('¿Eliminar esta sede permanentemente? También se borrarán su inventario, veterinarios y citas asociadas.');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn btn-outline-danger btn-sm">Eliminar</button>
+                    </form>
+                  </td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
+
     <div class="card shadow-sm mb-3">
       <div class="card-header">Mascotas Registradas</div>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-          <thead><tr><th>ID</th><th>Nombre</th><th>Especie / Raza</th><th>Propietario</th><th>Acción</th></tr></thead>
+          <thead><tr><th>ID</th><th>Nombre</th><th>Especie / Raza</th><th>Sexo</th><th>Propietario</th><th>Acción</th></tr></thead>
           <tbody>
             {% for m in mascotas %}
             <tr>
               <td>{{ m.idmascota }}</td>
               <td>{{ m.nombre }}</td>
-              <td>{{ m.especie }} / {{ m.raza }}</td>
+              <td>{{ m.especie }} / {{ m.raza or '-' }}</td>
+              <td>{{ m.sexo or '-' }}</td>
               <td>{{ m.propietario }}</td>
               <td>
                 <form method="POST" action="{{ url_for('admin_eliminar_mascota', idmascota=m.idmascota) }}" onsubmit="return confirm('¿Eliminar esta mascota? Si eres Super Admin también se eliminarán sus citas y vacunas.');">
@@ -313,12 +359,13 @@
               </td>
             </tr>
             {% else %}
-            <tr><td colspan="5" class="text-center text-muted">No hay mascotas registradas.</td></tr>
+            <tr><td colspan="6" class="text-center text-muted">No hay mascotas registradas.</td></tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     </div>
+
     <div class="card shadow-sm">
       <div class="card-header">Bitácora de Auditoría (Últimos 80)</div>
       <div class="table-responsive">
@@ -333,5 +380,167 @@
       </div>
     </div>
   </div>
+
+  {% if session.get('idRol') == 4 %}
+  <div class="tab-pane fade" id="tab-consola">
+    <div class="row g-3">
+      <div class="col-lg-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header card-header-vet">Explorador de Esquema MySQL</div>
+          <div class="card-body">
+            <label class="form-label small fw-semibold">Selecciona una tabla para ver sus columnas:</label>
+            <select id="selectorTablaSql" class="form-select form-select-sm mb-2">
+              {% for tname in esquema_tablas.keys() %}
+              <option value="{{ tname }}">{{ tname }}</option>
+              {% endfor %}
+            </select>
+            <div class="d-flex gap-1 mb-2">
+              <button type="button" id="btnPlantillaSelect" class="btn btn-outline-primary btn-sm w-50">Plantilla SELECT</button>
+              <button type="button" id="btnPlantillaInsert" class="btn btn-outline-success btn-sm w-50">Plantilla INSERT</button>
+            </div>
+            <div class="table-responsive border rounded" style="max-height: 290px;">
+              <table class="table table-sm table-striped mb-0 small" id="tablaColumnasSql">
+                <thead><tr><th>Columna</th><th>Tipo</th><th>Nulo</th><th>Clave</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-8">
+        <div class="card shadow-sm mb-3">
+          <div class="card-header card-header-vet d-flex justify-content-between align-items-center">
+            <span>Consola SQL (Solo Consultas e Inserciones)</span>
+            <span class="badge bg-light text-dark">SELECT / JOIN / SHOW / DESCRIBE / INSERT</span>
+          </div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('admin_consola_sql') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <textarea name="sql_query" id="editorSqlQuery" rows="5" class="form-control font-monospace small mb-2" placeholder="Ej: SELECT c.idcita, m.nombre_mascota, s.nombre_sede FROM cita c JOIN mascota m ON c.idmascota = m.idmascota JOIN sede s ON c.idSede = s.idSede LIMIT 20;" required>{{ sql_resultado.sql if sql_resultado else 'SHOW TABLES;' }}</textarea>
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <small class="text-muted">Bloqueados: DELETE, DROP, TRUNCATE, UPDATE, ALTER y múltiples sentencias (;).</small>
+                <div class="d-flex gap-2">
+                  <button type="button" id="btnLimpiarSql" class="btn btn-outline-secondary btn-sm">Limpiar</button>
+                  <button type="submit" class="btn btn-vet btn-sm">Ejecutar SQL</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        {% if sql_resultado %}
+        <div class="card shadow-sm">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Resultado de Ejecución</span>
+            {% if sql_resultado.ok %}<span class="badge bg-success">{{ sql_resultado.ms }} ms</span>{% endif %}
+          </div>
+          <div class="card-body">
+            {% if not sql_resultado.ok %}
+              <div class="alert alert-danger mb-0 small"><strong>Error / Bloqueo:</strong> {{ sql_resultado.error }}</div>
+            {% elif sql_resultado.tipo == 'INSERCION' %}
+              <div class="alert alert-success mb-0 small">
+                <strong>Inserción confirmada en base de datos.</strong> Filas insertadas: <code>{{ sql_resultado.filas_afectadas }}</code>
+                {% if sql_resultado.ultimo_id %} | ID generado: <code>{{ sql_resultado.ultimo_id }}</code>{% endif %}
+              </div>
+            {% else %}
+              <p class="small text-muted mb-2">
+                Mostrando <strong>{{ sql_resultado.total_mostradas }}</strong> fila(s){% if sql_resultado.truncado %} (límite máximo de 250 filas alcanzado){% endif %}.
+              </p>
+              {% if sql_resultado.columnas %}
+              <div class="table-responsive" style="max-height: 360px;">
+                <table class="table table-sm table-bordered table-hover mb-0 small font-monospace">
+                  <thead class="table-light">
+                    <tr>{% for col in sql_resultado.columnas %}<th>{{ col }}</th>{% endfor %}</tr>
+                  </thead>
+                  <tbody>
+                    {% for fila in sql_resultado.filas %}
+                    <tr>{% for val in fila %}<td>{{ val }}</td>{% endfor %}</tr>
+                    {% else %}
+                    <tr><td colspan="{{ sql_resultado.columnas|length }}" class="text-center text-muted">La consulta no devolvió filas.</td></tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% endif %}
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const params = new URLSearchParams(window.location.search);
+  const tabParam = params.get("tab") || localStorage.getItem("admin_active_tab");
+  if (tabParam) {
+    const targetId = tabParam.startsWith("#") ? tabParam : "#" + tabParam;
+    const btn = document.querySelector(`[data-bs-target="${targetId}"]`);
+    if (btn && window.bootstrap) {
+      new bootstrap.Tab(btn).show();
+    }
+  }
+
+  document.querySelectorAll('#adminTabs button[data-bs-toggle="tab"]').forEach(function (el) {
+    el.addEventListener("shown.bs.tab", function (ev) {
+      const id = ev.target.getAttribute("data-bs-target").replace("#", "");
+      localStorage.setItem("admin_active_tab", id);
+      const url = new URL(window.location);
+      url.searchParams.set("tab", id);
+      window.history.replaceState({}, "", url);
+    });
+  });
+
+  {% if session.get('idRol') == 4 %}
+  const esquema = {{ esquema_tablas | tojson }};
+  const selTabla = document.getElementById("selectorTablaSql");
+  const tbodyCols = document.querySelector("#tablaColumnasSql tbody");
+  const editorSql = document.getElementById("editorSqlQuery");
+
+  function renderColumnas() {
+    if (!selTabla || !tbodyCols) return;
+    const cols = esquema[selTabla.value] || [];
+    tbodyCols.innerHTML = cols.map(c =>
+      `<tr><td class="fw-semibold">${c.COLUMN_NAME}</td><td>${c.COLUMN_TYPE}</td><td>${c.IS_NULLABLE}</td><td>${c.COLUMN_KEY || '-'}</td></tr>`
+    ).join("");
+  }
+
+  if (selTabla) {
+    renderColumnas();
+    selTabla.addEventListener("change", renderColumnas);
+  }
+
+  const btnSel = document.getElementById("btnPlantillaSelect");
+  if (btnSel && selTabla && editorSql) {
+    btnSel.addEventListener("click", function () {
+      editorSql.value = `SELECT * FROM \`${selTabla.value}\` LIMIT 25;`;
+      editorSql.focus();
+    });
+  }
+
+  const btnIns = document.getElementById("btnPlantillaInsert");
+  if (btnIns && selTabla && editorSql) {
+    btnIns.addEventListener("click", function () {
+      const cols = (esquema[selTabla.value] || []).filter(c => !(c.EXTRA || "").includes("auto_increment"));
+      const nombres = cols.map(c => `\`${c.COLUMN_NAME}\``).join(", ");
+      const valores = cols.map(c => `'valor_${c.COLUMN_NAME}'`).join(", ");
+      editorSql.value = `INSERT INTO \`${selTabla.value}\` (${nombres})\nVALUES (${valores});`;
+      editorSql.focus();
+    });
+  }
+
+  const btnLimpiar = document.getElementById("btnLimpiarSql");
+  if (btnLimpiar && editorSql) {
+    btnLimpiar.addEventListener("click", function () {
+      editorSql.value = "";
+      editorSql.focus();
+    });
+  }
+  {% endif %}
+});
+</script>
 {% endblock %}

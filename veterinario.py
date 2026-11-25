@@ -1,7 +1,10 @@
+from datetime import date, datetime, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 import mysql.connector
 from db import get_db_connection
 from validadores import (
+    VACUNAS_MASCOTAS,
+    UNIDADES_DOSIS, validar_receta_medica,
     ROL_VETERINARIO, ROL_ADMIN, ROL_SUPERADMIN,
     validar_fecha_no_futura, validar_transicion_estado,
     cita_saldada, registrar_auditoria
@@ -82,7 +85,8 @@ def panel():
             "warning",
         )
         return render_template(
-            "veterinario.html",
+        "veterinario.html",
+        vacunas_catalogo=VACUNAS_MASCOTAS,
             vet_info=None,
             todos_veterinarios=[],
             estados=[],
@@ -98,7 +102,7 @@ def panel():
             ficha_vacunas=[],
             ficha_procedimientos=[],
             ficha_recetas=[],
-            buscar_mascota="",
+            buscar_mascota="", hoy=date.today().isoformat(), unidades_dosis=UNIDADES_DOSIS,
         )
 
     cursor.execute("SELECT * FROM veterinario ORDER BY nombre_veterinario")
@@ -109,11 +113,12 @@ def panel():
 
     cursor.execute(
         """
-        SELECT c.*, m.idmascota, m.nombre_mascota, m.especie, m.raza, m.sexo, m.peso, m.alergias,
+        SELECT c.*, m.idmascota, m.nombre_mascota, m.especie, m.raza, sx.descripcion AS sexo, m.peso, m.alergias,
                d.nombre_dueño, d.documento_dueño, d.telefono_dueño,
                e.nombre_estado, s.nombre_sede
         FROM cita c
         JOIN mascota m ON c.idmascota = m.idmascota
+        LEFT JOIN sexo sx ON m.idsexo = sx.idsexo
         JOIN dueño d ON m.id_dueño = d.id_dueño
         JOIN estado_cita e ON c.idestado_cita = e.idestado_cita
         JOIN sede s ON c.idSede = s.idSede
@@ -208,8 +213,8 @@ def panel():
     if target_mascota_id:
         cursor.execute(
             """
-            SELECT m.*, d.nombre_dueño, d.telefono_dueño, d.documento_dueño
-            FROM mascota m JOIN dueño d ON m.id_dueño = d.id_dueño
+            SELECT m.*, sx.descripcion AS sexo, d.nombre_dueño, d.telefono_dueño, d.documento_dueño
+            FROM mascota m LEFT JOIN sexo sx ON m.idsexo = sx.idsexo JOIN dueño d ON m.id_dueño = d.id_dueño
             WHERE m.idmascota = %s
             """,
             (target_mascota_id,),
@@ -269,6 +274,7 @@ def panel():
 
     return render_template(
         "veterinario.html",
+        vacunas_catalogo=VACUNAS_MASCOTAS,
         vet_info=vet_info,
         todos_veterinarios=todos_veterinarios,
         estados=estados,
@@ -284,7 +290,7 @@ def panel():
         ficha_vacunas=ficha_vacunas,
         ficha_procedimientos=ficha_procedimientos,
         ficha_recetas=ficha_recetas,
-        buscar_mascota=buscar_mascota,
+        buscar_mascota=buscar_mascota, hoy=date.today().isoformat(), unidades_dosis=UNIDADES_DOSIS,
     )
 
 
@@ -398,9 +404,20 @@ def crear_receta():
     idtrat = int(request.form["idtratamiento"])
     idmed = int(request.form["idMedicamento"])
     cant = int(request.form["cantidad_prescrita"])
-    dosis = (request.form.get("dosis") or "").strip()
-    frecuencia = (request.form.get("frecuencia") or "Según indicación").strip()
-    duracion_dias = max(1, int(request.form.get("duracion_dias") or 1))
+    ok_rec, res_rec = validar_receta_medica(
+        request.form.get("cantidad_prescrita"),
+        request.form.get("dosis_num"),
+        request.form.get("dosis_unidad"),
+        request.form.get("frecuencia_horas"),
+        request.form.get("duracion_dias"),
+    )
+    if not ok_rec:
+        flash(res_rec, "warning")
+        return redirect(url_for("veterinario.panel", tab="tab-consulta"))
+    cant = res_rec["cantidad"]
+    dosis = res_rec["dosis"]
+    frecuencia = res_rec["frecuencia"]
+    duracion_dias = res_rec["duracion_dias"]
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
