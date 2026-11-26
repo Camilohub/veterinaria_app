@@ -367,7 +367,7 @@ def admin_crear_veterinario():
     especialidad = " ".join((request.form.get("especialidad") or "").strip().split())
     tel_raw = request.form.get("telefono") or ""
     id_sede = request.form.get("idSede")
-    crear_cuenta = request.form.get("crear_cuenta_usuario") == "1"
+    crear_cuenta = True
     nombre_usuario = (request.form.get("nombre_usuario") or "").strip()
     clave = request.form.get("contraseña") or ""
 
