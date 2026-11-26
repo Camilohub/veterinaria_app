@@ -321,27 +321,6 @@ def cambiar_estado(idcita):
         conn.close()
     return redirect(url_for("veterinario.panel"))
 
-
-@veterinario_bp.route("/cita/signos/<int:idcita>", methods=["POST"])
-def registrar_signos(idcita):
-    if session.get("idRol") not in (ROL_VETERINARIO, ROL_ADMIN, ROL_SUPERADMIN):
-        return redirect(url_for("panel"))
-    signos = (request.form.get("signos_vitales") or "").strip()
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("UPDATE cita SET signos_vitales = %s WHERE idcita = %s", (signos, idcita))
-        conn.commit()
-        flash("Signos vitales registrados.", "success")
-    except mysql.connector.Error as err:
-        conn.rollback()
-        flash(f"Error: {err.msg}", "danger")
-    finally:
-        cursor.close()
-        conn.close()
-    return redirect(url_for("veterinario.panel"))
-
-
 @veterinario_bp.route("/tratamiento", methods=["POST"])
 def crear_tratamiento():
     if session.get("idRol") not in (ROL_VETERINARIO, ROL_ADMIN, ROL_SUPERADMIN):

@@ -39,7 +39,7 @@
       <div class="card-header card-header-vet">Agenda Asignada</div>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-          <thead><tr><th>#</th><th>Fecha/Hora</th><th>Paciente</th><th>Propietario</th><th>Motivo</th><th>Signos Vitales</th><th>Estado</th></tr></thead>
+          <thead><tr><th>#</th><th>Fecha/Hora</th><th>Paciente</th><th>Propietario</th><th>Motivo</th><th>Estado</th></tr></thead>
           <tbody>
             {% for c in citas %}
             <tr>
@@ -51,13 +51,6 @@
               </td>
               <td>{{ c.nombre_dueño }}<div class="small text-muted">CC {{ c.documento_dueño }}</div></td>
               <td>{{ c.motivo or '-' }}</td>
-              <td>
-                <form method="POST" action="{{ url_for('veterinario.registrar_signos', idcita=c.idcita) }}" class="d-flex gap-1">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <input type="text" name="signos_vitales" value="{{ c.signos_vitales or '' }}" placeholder="T°, FC, FR..." class="form-control form-control-sm" style="width:140px">
-                  <button class="btn btn-outline-primary btn-sm">OK</button>
-                </form>
-              </td>
               <td>
                 {% if c.esta_saldada %}
                   <span class="badge bg-success">{{ c.nombre_estado }} (Saldada)</span>
