@@ -227,9 +227,18 @@
                 {% for m in mascotas_ficha %}<option value="{{ m.idmascota }}">{{ m.nombre_mascota }} ({{ m.nombre_dueño }})</option>{% endfor %}
               </select>
               <select name="nombre_vacuna" class="form-select form-select-sm" required>
-                <option value="">Selecciona vacuna...</option>
-                {% for vac in vacunas_catalogo %}<option value="{{ vac }}">{{ vac }}</option>{% endfor %}
-              </select>
+<option value="">Seleccione una vacuna...</option>
+<option value="Rabia">Rabia</option>
+<option value="Parvovirus">Parvovirus</option>
+<option value="Moquillo (Distemper)">Moquillo (Distemper)</option>
+<option value="Polivalente Canina (Quíntuple / Séxtuple)">Polivalente Canina (Quíntuple / Séxtuple)</option>
+<option value="Bordetella (Tos de las perreras)">Bordetella (Tos de las perreras)</option>
+<option value="Leptospirosis">Leptospirosis</option>
+<option value="Triple Felina (Panleucopenia, Rinotraqueitis, Calicivirus)">Triple Felina (Panleucopenia, Rinotraqueitis, Calicivirus)</option>
+<option value="Leucemia Viral Felina (FeLV)">Leucemia Viral Felina (FeLV)</option>
+<option value="Hepatitis Infecciosa Canina (Adenovirus)">Hepatitis Infecciosa Canina (Adenovirus)</option>
+<option value="Parainfluenza Canina">Parainfluenza Canina</option>
+</select>
               <input type="text" name="lote" placeholder="Lote (opcional)" class="form-control form-control-sm">
               <div class="row g-1">
                 <div class="col-6"><label class="small text-muted">Aplicación</label><input type="date" name="fecha_aplicacion" max="{{ hoy }}" class="form-control form-control-sm" required></div>
